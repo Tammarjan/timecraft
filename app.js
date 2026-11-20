@@ -104,12 +104,12 @@ async function resetAll(){if(!confirm('Clear every TimeCraft record on this devi
 document.addEventListener('click',async e=>{const b=e.target.closest('[data-action]');if(!b)return;const a=b.dataset.action;try{
  if(a.startsWith('goto-'))setView(a.slice(5));
  else if(a==='add-teachers'||a==='add-classes'||a==='add-subjects')editForm(a.slice(4));
+ else if(a.startsWith('edit-slot-'))await editSlot(a.slice(10));
  else if(a.startsWith('edit-')){const p=a.split('-');await editForm(p[1],p.slice(2).join('-'))}
-
+ else if(a.startsWith('delete-fixture-')){if(confirm('Delete this fixture record?')){await del('fixtures',a.slice(15));toast('Fixture deleted');render()}}
  else if(a.startsWith('delete-')){const p=a.split('-');if(confirm('Delete this record?')){await del(p[1],p.slice(2).join('-'));toast('Deleted');render()}}
  else if(a==='close-modal')$('.modal-backdrop')?.remove();
  else if(a==='generate')await generateTimetable();
- else if(a.startsWith('edit-slot-'))await editSlot(a.slice(10));
  else if(a==='new-fixture')await createFixture();
  else if(a.startsWith('delete-fixture-')){if(confirm('Delete this fixture record?')){await del('fixtures',a.slice(15));toast('Fixture deleted');render()}}
  else if(a==='backup')await backup();
