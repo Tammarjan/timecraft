@@ -12,3 +12,6 @@
 @media(max-width:640px){.period-row{grid-template-columns:1fr 1fr;align-items:end}.period-row>input{grid-column:1/-1}.period-row .btn{justify-self:start}.fixture-choice{grid-template-columns:1fr}.check-grid{grid-template-columns:1fr}}
 
 .day-schedule-grid{display:grid;grid-template-columns:1fr;gap:12px}.day-editor{padding:0;overflow:hidden}.day-editor>summary{display:flex;align-items:center;gap:12px;cursor:pointer;padding:16px;list-style:none}.day-editor>summary::-webkit-details-marker{display:none}.day-editor>summary:after{content:'＋';margin-left:auto;color:var(--muted)}.day-editor[open]>summary:after{content:'−'}.schedule-editor-inner{padding:0 16px 16px}.schedule-editor-inner .form-grid{margin-top:8px}.schedule-editor-inner h4{margin:16px 0 8px}.schedule-editor-inner .field label input[type=checkbox]{width:auto;min-height:auto;margin-right:7px}.period-row{align-items:end}.period-row>input{min-width:70px}.period-row label{min-width:90px}
+
+.assignment-pickers{display:grid;grid-template-columns:1fr;gap:6px;min-width:145px}.assignment-pickers select{width:100%;min-width:0}
+@media(min-width:900px){.assignment-pickers{grid-template-columns:1fr 1fr;min-width:240px}}
