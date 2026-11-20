@@ -66,63 +66,95 @@ async function timetablePage(){
 async function generateTimetable(){
  const [classes,subjects,teachers,s,maps]=await Promise.all(['classes','subjects','teachers','settings','teachingAssignments'].map(x=>x==='settings'?setting():all(x)));
  if(!classes.length||!teachers.length||!subjects.length){toast('Add classes, subjects and teachers first');return}
- const days=(s.workingDays||DAYS).filter(d=>DAYS.includes(d));if(!days.length){toast('Select at least one working day');return}
- const dayPeriods={};for(const day of days){const sc=scheduleForDay(s,day);dayPeriods[day]=[...(sc.beforeBreak||[]),...(sc.afterBreak||[])];if(!dayPeriods[day].length){toast('Add at least one period for '+day);return}}
- const tasks=[];for(const cl of classes)for(const sub of subjects.filter(x=>!x.classId||x.classId===cl.id))for(let n=0;n<Number(sub.periods||0);n++)tasks.push({classId:cl.id,className:cl.name,subjectId:sub.id,subjectName:sub.name});
- const placed=[],teacherLoad={},remaining=[];
- const teacherOk=(t,task)=>{const map=maps.find(x=>x.classId===task.classId&&x.subjectId===task.subjectId);return (!map||((map.teacherIds||[map.teacherId]).filter(Boolean).includes(t.id)))&&eligibleTeacher(t,task.subjectName,task.className)};
- const chooseTeacher=(task,day,period)=>{
-  const candidates=teachers.filter(t=>teacherOk(t,task)&&Number(t.maxPeriods??30)>0&&(teacherLoad[t.id]||0)<Number(t.maxPeriods??30)&&!placed.some(x=>x.teacherId===t.id&&x.day===day&&x.period===period));
-  candidates.sort((a,b)=>{
-   const adjacent=t=>placed.filter(x=>x.teacherId===t.id&&x.day===day&&Math.abs(x.period-period)===1).length;
-   return adjacent(a)-adjacent(b)||(teacherLoad[a.id]||0)-(teacherLoad[b.id]||0);
-  });
-  return candidates[0]||null;
- };
- const place=(task,day,period,teacher)=>{
-  const pi=dayPeriods[day][period-1];
-  placed.push({...task,day,period,periodName:pi.name,start:pi.start,end:pi.end,teacherId:teacher.id,teacherName:teacher.name});
-  teacherLoad[teacher.id]=(teacherLoad[teacher.id]||0)+1;
- };
- // English is reserved for period 1 in every working day. It is never moved to a later period.
- for(const cl of classes){
-  const english=subjects.find(x=>x.classId===cl.id&&String(x.name).trim().toLowerCase()==='english');
-  if(!english)continue;
-  const needed=Number(english.periods||0);
-  let scheduled=0;
-  for(const day of days){
-   if(scheduled>=needed)break;
-   if(!dayPeriods[day].length||placed.some(x=>x.classId===cl.id&&x.day===day&&x.period===1))continue;
-   const task={classId:cl.id,className:cl.name,subjectId:english.id,subjectName:english.name};
-   const teacher=chooseTeacher(task,day,1);
-   if(teacher){place(task,day,1,teacher);scheduled++;}
-  }
-  for(let n=scheduled;n<needed;n++)remaining.push(cl.name+' — English (must be first period)');
+ const days=(s.workingDays||DAYS).filter(d=>DAYS.includes(d));
+ if(!days.length){toast('Select at least one working day');return}
+ const dayPeriods={};
+ for(const day of days){const sc=scheduleForDay(s,day);dayPeriods[day]=[...(sc.beforeBreak||[]),...(sc.afterBreak||[])];if(!dayPeriods[day].length){toast('Add at least one period for '+day);return}}
+ const tasks=[];
+ for(const cl of classes)for(const sub of subjects.filter(x=>!x.classId||x.classId===cl.id)){
+  const count=Math.max(0,Number(sub.periods)||0);
+  for(let n=0;n<count;n++)tasks.push({classId:cl.id,className:cl.name,subjectId:sub.id,subjectName:sub.name,occurrence:n});
  }
- const otherTasks=tasks.filter(t=>String(t.subjectName).trim().toLowerCase()!=='english');
- otherTasks.sort((a,b)=>teachers.filter(t=>teacherOk(t,a)).length-teachers.filter(t=>teacherOk(t,b)).length||Math.random()-.5);
- for(const task of otherTasks){
-  let options=[];
-  for(const day of days)for(let p=1;p<=dayPeriods[day].length;p++){
-   if(placed.some(x=>x.classId===task.classId&&x.day===day&&x.period===p))continue;
-   if(placed.filter(x=>x.classId===task.classId&&x.day===day&&x.subjectId===task.subjectId).length>=1)continue;
-   const candidates=teachers.filter(t=>teacherOk(t,task)&&Number(t.maxPeriods??30)>0&&(teacherLoad[t.id]||0)<Number(t.maxPeriods??30)&&!placed.some(x=>x.teacherId===t.id&&x.day===day&&x.period===p));
-   for(const t of candidates){
-    const adjacent=placed.filter(x=>x.teacherId===t.id&&x.day===day&&Math.abs(x.period-p)===1).length;
-    const dailyClassLoad=placed.filter(x=>x.classId===task.classId&&x.day===day).length;
-    options.push({day,period:p,teacher:t,score:adjacent*100+(teacherLoad[t.id]||0)*3+dailyClassLoad+Math.random()*2});
+ const teacherMap=new Map();
+ const allowedTeachers=task=>{
+  const key=task.classId+':'+task.subjectId;
+  if(!teacherMap.has(key)){
+   const map=maps.find(x=>x.classId===task.classId&&x.subjectId===task.subjectId);
+   const ids=map?(map.teacherIds||[map.teacherId]).filter(Boolean):null;
+   teacherMap.set(key,teachers.filter(t=>(!ids||ids.includes(t.id))&&eligibleTeacher(t,task.subjectName,task.className)&&Number(t.maxPeriods??30)>0));
+  }
+  return teacherMap.get(key);
+ };
+ const subjectCounts=new Map();
+ for(const t of tasks)subjectCounts.set(t.classId+':'+t.subjectId,(subjectCounts.get(t.classId+':'+t.subjectId)||0)+1);
+ const capacity=classes.reduce((sum,cl)=>sum+days.reduce((n,d)=>n+dayPeriods[d].length,0),0);
+ const runAttempt=()=>{
+  const placed=[],teacherLoad={},classDaySubject=new Set(),classDayPeriod=new Set(),teacherDayPeriod=new Set();
+  const key=(...v)=>v.join('|');
+  const canPlace=(task,day,period,teacher)=>!classDayPeriod.has(key(task.classId,day,period))&&!classDaySubject.has(key(task.classId,day,task.subjectId))&&!teacherDayPeriod.has(key(teacher.id,day,period))&&(teacherLoad[teacher.id]||0)<Number(teacher.maxPeriods??30);
+  const put=(task,day,period,teacher)=>{
+   const pi=dayPeriods[day][period-1];
+   placed.push({...task,day,period,periodName:pi.name,start:pi.start,end:pi.end,teacherId:teacher.id,teacherName:teacher.name});
+   classDayPeriod.add(key(task.classId,day,period));classDaySubject.add(key(task.classId,day,task.subjectId));teacherDayPeriod.add(key(teacher.id,day,period));teacherLoad[teacher.id]=(teacherLoad[teacher.id]||0)+1;
+  };
+  // Reserve English in period 1 on as many distinct working days as required.
+  for(const cl of classes){
+   const english=subjects.find(x=>x.classId===cl.id&&String(x.name).trim().toLowerCase()==='english');
+   if(!english)continue;
+   const task={classId:cl.id,className:cl.name,subjectId:english.id,subjectName:english.name};
+   const needed=Math.max(0,Number(english.periods)||0),eligible=allowedTeachers(task);
+   const englishDays=days.slice().sort(()=>Math.random()-.5);
+   let count=0;
+   for(const day of englishDays){
+    if(count>=needed)break;
+    if(!dayPeriods[day][0]||classDayPeriod.has(key(cl.id,day,1)))continue;
+    const candidates=eligible.filter(t=>canPlace(task,day,1,t)).sort((a,b)=>(teacherLoad[a.id]||0)-(teacherLoad[b.id]||0));
+    if(candidates.length){put(task,day,1,candidates[0]);count++}
    }
   }
-  options.sort((a,b)=>a.score-b.score);
-  const best=options[0];
-  if(!best){remaining.push(task.className+' — '+task.subjectName);continue}
-  place(task,best.day,best.period,best.teacher);
+  // Most-constrained subjects first; shuffle ties so independent attempts explore different layouts.
+  const remaining=tasks.filter(t=>String(t.subjectName).trim().toLowerCase()!=='english');
+  remaining.sort((a,b)=>{
+   const ac=allowedTeachers(a).length,bc=allowedTeachers(b).length;
+   return ac-bc||subjectCounts.get(b.classId+':'+b.subjectId)-subjectCounts.get(a.classId+':'+a.subjectId)||Math.random()-.5;
+  });
+  for(const task of remaining){
+   const eligible=allowedTeachers(task),options=[];
+   for(const day of days)for(let p=1;p<=dayPeriods[day].length;p++){
+    if(classDayPeriod.has(key(task.classId,day,p))||classDaySubject.has(key(task.classId,day,task.subjectId)))continue;
+    for(const teacher of eligible)if(canPlace(task,day,p,teacher)){
+     const adjacent=placed.filter(x=>x.teacherId===teacher.id&&x.day===day&&Math.abs(x.period-p)===1).length;
+     const sameClassDay=placed.filter(x=>x.classId===task.classId&&x.day===day).length;
+     const subjectDayLoad=placed.filter(x=>x.classId===task.classId&&x.day===day).length;
+     const score=adjacent*80+(teacherLoad[teacher.id]||0)*2+sameClassDay*1.5+subjectDayLoad*.2+Math.random()*8;
+     options.push({day,period:p,teacher,score});
+    }
+   }
+   options.sort((a,b)=>a.score-b.score);
+   if(options.length)put(task,options[0].day,options[0].period,options[0].teacher);
+  }
+  return placed;
+ };
+ // Greedy placement can paint itself into a corner. Run many varied schedules and keep the fullest.
+ let best=[],attempts=180;
+ for(let i=0;i<attempts;i++){
+  const candidate=runAttempt();
+  if(candidate.length>best.length)best=candidate;
+  if(best.length===tasks.length||best.length>=capacity)break;
  }
- const tx=db.transaction('slots','readwrite'),st=tx.objectStore('slots');st.clear();placed.forEach(x=>st.add(x));await new Promise((res,rej)=>{tx.oncomplete=res;tx.onerror=()=>rej(tx.error)});
- toast('Generated '+placed.length+' periods'+(remaining.length?' · '+remaining.length+' unfilled':''));render();
- if(remaining.length)openModal('<h3>Generation completed with gaps</h3><p class="hint">'+remaining.length+' requested periods could not be placed. English remains fixed to period 1; assigned teachers are kept fixed. Teacher back-to-back periods are avoided where possible.</p><div class="notice" style="max-height:220px;overflow:auto">'+remaining.slice(0,30).map(esc).join('<br>')+'</div><div class="form-actions"><button class="btn" data-action="close-modal">Close</button></div>');
+ const placed=best,remainingCount=Math.max(0,tasks.length-placed.length);
+ const tx=db.transaction('slots','readwrite'),st=tx.objectStore('slots');st.clear();placed.forEach(x=>st.add(x));
+ await new Promise((res,rej)=>{tx.oncomplete=res;tx.onerror=()=>rej(tx.error)});
+ toast('Generated '+placed.length+' of '+tasks.length+' requested periods'+(remainingCount?' · '+remainingCount+' unfilled':''));
+ render();
+ if(remainingCount){
+  const summary=tasks.reduce((out,t)=>{const n=placed.filter(x=>x.classId===t.classId&&x.subjectId===t.subjectId).length,need=subjectCounts.get(t.classId+':'+t.subjectId);if(n<need){const k=t.className+' — '+t.subjectName;if(!out.has(k))out.set(k,{scheduled:n,required:need});}return out},new Map());
+  const reasons=[...summary].map(([name,v])=>name+' ('+v.scheduled+'/'+v.required+')');
+  openModal('<h3>Timetable generated with '+remainingCount+' gaps</h3><p class="hint">Generator ne '+attempts+' different arrangements try kiye aur sab se complete timetable save kiya. Har subject ko aik din mein maximum aik period diya gaya hai; English period 1 mein hi rakhi gayi hai. Assigned teacher restrictions aur teacher clashes enforce hain.</p><div class="notice" style="max-height:240px;overflow:auto">'+reasons.map(esc).join('<br>')+'</div><div class="form-actions"><button class="btn" data-action="close-modal">Close</button></div>');
+ }else{
+  openModal('<h3>Timetable generated successfully</h3><p class="hint">All '+tasks.length+' requested periods have been placed without teacher or class clashes.</p><div class="form-actions"><button class="btn" data-action="close-modal">Close</button></div>');
+ }
 }
-
 async function editSlot(id){
  const [slots,teachers,subjects,maps]=await Promise.all(['slots','teachers','subjects','teachingAssignments'].map(all)),slot=slots.find(x=>x.id===Number(id));if(!slot)return;
  const subjectOptions=subjects.filter(x=>!x.classId||x.classId===slot.classId),current=subjectOptions.find(x=>x.id===slot.subjectId)||subjectOptions[0];
