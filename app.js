@@ -89,13 +89,13 @@ async function generateTimetable(){
  for(const t of tasks)subjectCounts.set(t.classId+':'+t.subjectId,(subjectCounts.get(t.classId+':'+t.subjectId)||0)+1);
  const capacity=classes.reduce((sum,cl)=>sum+days.reduce((n,d)=>n+dayPeriods[d].length,0),0);
  const runAttempt=()=>{
-  const placed=[],teacherLoad={},classDaySubject=new Set(),classDayPeriod=new Set(),teacherDayPeriod=new Set();
+  const placed=[],teacherLoad={},classDayPeriod=new Set(),teacherDayPeriod=new Set();
   const key=(...v)=>v.join('|');
-  const canPlace=(task,day,period,teacher)=>!classDayPeriod.has(key(task.classId,day,period))&&!classDaySubject.has(key(task.classId,day,task.subjectId))&&!teacherDayPeriod.has(key(teacher.id,day,period))&&(teacherLoad[teacher.id]||0)<Number(teacher.maxPeriods??30);
+  const canPlace=(task,day,period,teacher)=>!classDayPeriod.has(key(task.classId,day,period))&&!teacherDayPeriod.has(key(teacher.id,day,period))&&(teacherLoad[teacher.id]||0)<Number(teacher.maxPeriods??30);
   const put=(task,day,period,teacher)=>{
    const pi=dayPeriods[day][period-1];
    placed.push({...task,day,period,periodName:pi.name,start:pi.start,end:pi.end,teacherId:teacher.id,teacherName:teacher.name});
-   classDayPeriod.add(key(task.classId,day,period));classDaySubject.add(key(task.classId,day,task.subjectId));teacherDayPeriod.add(key(teacher.id,day,period));teacherLoad[teacher.id]=(teacherLoad[teacher.id]||0)+1;
+   classDayPeriod.add(key(task.classId,day,period));teacherDayPeriod.add(key(teacher.id,day,period));teacherLoad[teacher.id]=(teacherLoad[teacher.id]||0)+1;
   };
   // Reserve English in period 1 on as many distinct working days as required.
   for(const cl of classes){
@@ -121,12 +121,11 @@ async function generateTimetable(){
   for(const task of remaining){
    const eligible=allowedTeachers(task),options=[];
    for(const day of days)for(let p=1;p<=dayPeriods[day].length;p++){
-    if(classDayPeriod.has(key(task.classId,day,p))||classDaySubject.has(key(task.classId,day,task.subjectId)))continue;
+    if(classDayPeriod.has(key(task.classId,day,p)))continue;
     for(const teacher of eligible)if(canPlace(task,day,p,teacher)){
      const adjacent=placed.filter(x=>x.teacherId===teacher.id&&x.day===day&&Math.abs(x.period-p)===1).length;
      const sameClassDay=placed.filter(x=>x.classId===task.classId&&x.day===day).length;
-     const subjectDayLoad=placed.filter(x=>x.classId===task.classId&&x.day===day).length;
-     const score=adjacent*80+(teacherLoad[teacher.id]||0)*2+sameClassDay*1.5+subjectDayLoad*.2+Math.random()*8;
+     const score=adjacent*35+(teacherLoad[teacher.id]||0)*2+sameClassDay+Math.random()*8;
      options.push({day,period:p,teacher,score});
     }
    }
@@ -136,7 +135,7 @@ async function generateTimetable(){
   return placed;
  };
  // Greedy placement can paint itself into a corner. Run many varied schedules and keep the fullest.
- let best=[],attempts=180;
+ let best=[],attempts=1200;
  for(let i=0;i<attempts;i++){
   const candidate=runAttempt();
   if(candidate.length>best.length)best=candidate;
@@ -150,7 +149,7 @@ async function generateTimetable(){
  if(remainingCount){
   const summary=tasks.reduce((out,t)=>{const n=placed.filter(x=>x.classId===t.classId&&x.subjectId===t.subjectId).length,need=subjectCounts.get(t.classId+':'+t.subjectId);if(n<need){const k=t.className+' — '+t.subjectName;if(!out.has(k))out.set(k,{scheduled:n,required:need});}return out},new Map());
   const reasons=[...summary].map(([name,v])=>name+' ('+v.scheduled+'/'+v.required+')');
-  openModal('<h3>Timetable generated with '+remainingCount+' gaps</h3><p class="hint">Generator ne '+attempts+' different arrangements try kiye aur sab se complete timetable save kiya. Har subject ko aik din mein maximum aik period diya gaya hai; English period 1 mein hi rakhi gayi hai. Assigned teacher restrictions aur teacher clashes enforce hain.</p><div class="notice" style="max-height:240px;overflow:auto">'+reasons.map(esc).join('<br>')+'</div><div class="form-actions"><button class="btn" data-action="close-modal">Close</button></div>');
+  openModal('<h3>Timetable generated with '+remainingCount+' gaps</h3><p class="hint">Generator ne '+attempts+' different arrangements try kiye aur sab se complete timetable save kiya. Same subject ko zaroorat par aik din mein dobara schedule kiya ja sakta hai; English period 1 mein hi rakhi gayi hai. Assigned teacher restrictions aur teacher clashes enforce hain.</p><div class="notice" style="max-height:240px;overflow:auto">'+reasons.map(esc).join('<br>')+'</div><div class="form-actions"><button class="btn" data-action="close-modal">Close</button></div>');
  }else{
   openModal('<h3>Timetable generated successfully</h3><p class="hint">All '+tasks.length+' requested periods have been placed without teacher or class clashes.</p><div class="form-actions"><button class="btn" data-action="close-modal">Close</button></div>');
  }
