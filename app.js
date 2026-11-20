@@ -7,6 +7,11 @@ const stores=['teachers','classes','subjects','slots','fixtures','settings'];
 let db, currentView='dashboard', editing=null;
 const $=s=>document.querySelector(s), esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const DAYS=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+function eligibleTeacher(t,subjectName,className){
+ const subjects=(t.subjects||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean);
+ const classes=(t.classes||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean);
+ return (!subjects.length||subjects.includes(String(subjectName).trim().toLowerCase()))&&(!classes.length||classes.includes(String(className).trim().toLowerCase()));
+}
 const defaults={schoolName:'My School',workingDays:DAYS,periods:7,periodMinutes:40,schoolStart:'09:00',breakAfter:4,breakMinutes:30,fridayPeriods:5};
 function openDB(){return new Promise((resolve,reject)=>{const req=indexedDB.open(DB_NAME,DB_VERSION);req.onupgradeneeded=()=>{const d=req.result;stores.forEach(s=>{if(!d.objectStoreNames.contains(s))d.createObjectStore(s,{keyPath:'id',autoIncrement:true})})};req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error)})}
 function all(store){return new Promise((resolve,reject)=>{const r=db.transaction(store).objectStore(store).getAll();r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)})}
@@ -50,7 +55,7 @@ async function generateTimetable(){
  const tasks=[];
  for(const c of classes)for(const sub of subjects.filter(x=>!x.classId||x.classId===c.id))for(let n=0;n<Number(sub.periods||0);n++)tasks.push({classId:c.id,className:c.name,subjectId:sub.id,subjectName:sub.name});
  const placed=[],teacherLoad={},classDayCount={};let remaining=[];
- const teacherOk=(t,task)=>{const list=(t.subjects||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean);const cl=(t.classes||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean);return (!list.length||list.includes(task.subjectName.toLowerCase()))&&(!cl.length||cl.includes(task.className.toLowerCase()))};
+ const teacherOk=(t,task)=>eligibleTeacher(t,task.subjectName,task.className);
  tasks.sort((a,b)=>{const ca=teachers.filter(t=>teacherOk(t,a)).length,cb=teachers.filter(t=>teacherOk(t,b)).length;return ca-cb||Math.random()-.5});
  for(const task of tasks){
   let options=[];
@@ -76,7 +81,7 @@ async function generateTimetable(){
 async function editSlot(id){
  const [slots,teachers,subjects,classes]=await Promise.all(['slots','teachers','subjects','classes'].map(all));const slot=slots.find(x=>x.id===Number(id));if(!slot)return;
  openModal('<h3>Edit timetable period</h3><p class="hint">'+esc(slot.day)+' · Period '+slot.period+' · '+esc(slot.className)+'</p><form id="slotForm"><div class="field"><label>Subject</label><select name="subjectId">'+subjects.filter(x=>!x.classId||x.classId===slot.classId).map(x=>'<option value="'+x.id+'" '+(x.id===slot.subjectId?'selected':'')+'>'+esc(x.name)+'</option>').join('')+'</select></div><div class="field"><label>Teacher</label><select name="teacherId">'+teachers.map(x=>'<option value="'+x.id+'" '+(x.id===slot.teacherId?'selected':'')+'>'+esc(x.name)+'</option>').join('')+'</select></div><div class="form-actions"><button type="button" class="btn ghost" data-action="close-modal">Cancel</button><button class="btn">Save changes</button></div></form>');
- $('#slotForm').addEventListener('submit',async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target)),tid=Number(f.teacherId),sid=Number(f.subjectId);const clash=slots.find(x=>x.id!==slot.id&&x.day===slot.day&&x.period===slot.period&&(x.teacherId===tid||x.classId===slot.classId));if(clash){toast('Conflict: teacher or class is already booked');return}const teacher=teachers.find(x=>x.id===tid),subject=subjects.find(x=>x.id===sid);await put('slots',{...slot,teacherId:tid,teacherName:teacher?.name||'',subjectId:sid,subjectName:subject?.name||''});$('.modal-backdrop').remove();toast('Period updated');render()});
+ $('#slotForm').addEventListener('submit',async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target)),tid=Number(f.teacherId),sid=Number(f.subjectId);const clash=slots.find(x=>x.id!==slot.id&&x.day===slot.day&&x.period===slot.period&&(x.teacherId===tid||x.classId===slot.classId));if(clash){toast('Conflict: teacher or class is already booked');return}const teacher=teachers.find(x=>x.id===tid),subject=subjects.find(x=>x.id===sid);if(!teacher||!subject||!eligibleTeacher(teacher,subject.name,slot.className)){toast('This teacher is not eligible for the selected subject and class');return}await put('slots',{...slot,teacherId:tid,teacherName:teacher?.name||'',subjectId:sid,subjectName:subject?.name||''});$('.modal-backdrop').remove();toast('Period updated');render()});
 }
 async function fixturesPage(){
  const [teachers,slots,fixtures,s]=await Promise.all(['teachers','slots','fixtures','settings'].map(x=>x==='settings'?setting():all(x)));
@@ -91,7 +96,7 @@ async function createFixture(){
  $('#fixtureForm').addEventListener('submit',async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target)),absentId=Number(f.teacherId),day=f.day,affected=slots.filter(x=>x.teacherId===absentId&&x.day===day);if(!affected.length){toast('No timetable periods found for this teacher on '+day);return}
  const load={};teachers.forEach(t=>load[t.id]=slots.filter(x=>x.teacherId===t.id).length+fixtures.filter(x=>x.substituteId===t.id&&x.date===f.date).length);
  const made=[];
- for(const lesson of affected){const eligible=teachers.filter(t=>t.id!==absentId&&Number(t.maxPeriods??30)>0&&((t.subjects||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean).length===0||(t.subjects||'').split(',').map(x=>x.trim().toLowerCase()).includes(lesson.subjectName.toLowerCase()))&&((t.classes||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean).length===0||(t.classes||'').split(',').map(x=>x.trim().toLowerCase()).includes(lesson.className.toLowerCase()))&&!slots.some(x=>x.teacherId===t.id&&x.day===day&&x.period===lesson.period)&&!fixtures.some(x=>x.date===f.date&&x.substituteId===t.id&&x.period===lesson.period)&&!made.some(x=>x.substituteId===t.id&&x.period===lesson.period));
+ for(const lesson of affected){const eligible=teachers.filter(t=>t.id!==absentId&&Number(t.maxPeriods??30)>Number(load[t.id]||0)&&eligibleTeacher(t,lesson.subjectName,lesson.className)&&!slots.some(x=>x.teacherId===t.id&&x.day===day&&x.period===lesson.period)&&!fixtures.some(x=>x.date===f.date&&x.substituteId===t.id&&x.period===lesson.period)&&!made.some(x=>x.substituteId===t.id&&x.period===lesson.period));
   eligible.sort((a,b)=>(load[a.id]||0)-(load[b.id]||0));const sub=eligible[0];
   const rec={date:f.date,day,absentId,absentName:teachers.find(t=>t.id===absentId)?.name||'',classId:lesson.classId,className:lesson.className,subjectId:lesson.subjectId,subjectName:lesson.subjectName,period:lesson.period,substituteId:sub?.id||null,substituteName:sub?.name||'',reason:sub?'Assigned by lowest current workload':'No eligible teacher available without a clash'};
   if(sub)load[sub.id]=(load[sub.id]||0)+1;made.push(rec);
