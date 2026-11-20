@@ -8,7 +8,6 @@ let db, currentView='dashboard', editing=null;
 const $=s=>document.querySelector(s), esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const DAYS=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 function eligibleTeacher(t,subjectName,className){
- if(String(t.name||'').trim().toLowerCase()==='khadim hussain')return false;
  const subjects=(t.subjects||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean);
  const classes=(t.classes||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean);
  return (!subjects.length||subjects.includes(String(subjectName).trim().toLowerCase()))&&(!classes.length||classes.includes(String(className).trim().toLowerCase()));
