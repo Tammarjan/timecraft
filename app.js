@@ -7,7 +7,7 @@ const stores=['teachers','classes','subjects','slots','fixtures','settings'];
 let db, currentView='dashboard', editing=null;
 const $=s=>document.querySelector(s), esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const DAYS=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-const defaults={schoolName:'My School',workingDays:DAYS,periods:7,periodMinutes:40,schoolStart:'09:00',breakAfter:4,breakMinutes:30,fridayPeriods:6};
+const defaults={schoolName:'My School',workingDays:DAYS,periods:7,periodMinutes:40,schoolStart:'09:00',breakAfter:4,breakMinutes:30,fridayPeriods:5};
 function openDB(){return new Promise((resolve,reject)=>{const req=indexedDB.open(DB_NAME,DB_VERSION);req.onupgradeneeded=()=>{const d=req.result;stores.forEach(s=>{if(!d.objectStoreNames.contains(s))d.createObjectStore(s,{keyPath:'id',autoIncrement:true})})};req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error)})}
 function all(store){return new Promise((resolve,reject)=>{const r=db.transaction(store).objectStore(store).getAll();r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)})}
 function put(store,obj){return new Promise((resolve,reject)=>{const tx=db.transaction(store,'readwrite');const r=tx.objectStore(store).put(obj);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)})}
@@ -39,7 +39,7 @@ async function timetablePage(){
  const visible=slots.filter(x=>x.classId===selected?.id);
  const heads=['Day',...Array.from({length:Number(s.periods)||7},(_,i)=>'P'+(i+1))];
  const rows=days.map(day=>'<tr><th>'+day+'</th>'+Array.from({length:Number(s.periods)||7},(_,i)=>{const x=visible.find(z=>z.day===day&&z.period===i+1);return '<td>'+(x?'<button class="slot" data-action="edit-slot-'+x.id+'">'+esc(x.subjectName)+'<small>'+esc(x.teacherName)+'</small></button>':'<span class="slot empty-slot">—</span>')+'</td>'}).join('')+'</tr>').join('');
- return '<div class="welcome"><div><h2>Weekly timetable</h2><p>Generate, review and fine-tune your weekly lesson plan.</p></div>'+btn('Generate timetable','generate','btn')+'</div><div class="toolbar"><select id="classFilter">'+classes.map(c=>'<option value="'+c.id+'" '+(c.id===classId?'selected':'')+'>'+esc(c.name)+'</option>').join('')+'</select><span class="spacer"></span>'+btn('Print / Save PDF','print','btn secondary')+'</div><div class="notice">Before generating, add teachers with eligible subjects/classes and add each class-subject weekly period requirement. Generation replaces the current timetable.</div><div class="panel">'+(classes.length?'<div class="schedule-scroll"><table class="schedule"><thead><tr>'+heads.map(h=>'<th>'+h+'</th>').join('')+'</tr></thead><tbody>'+rows+'</tbody></table></div>':empty('Add classes first','Create at least one class to build its timetable.'))+'</div><p class="hint" style="margin-top:12px">Saved timetable slots: '+slots.length+' · '+teachers.length+' teachers · '+subjects.length+' subject records</p>';
+ return '<div class="welcome"><div><h2>Weekly timetable</h2><p>Generate, review and fine-tune your weekly lesson plan.</p></div>'+btn('Generate timetable','generate','btn')+'</div><div class="toolbar"><select id="classFilter">'+classes.map(c=>'<option value="'+c.id+'" '+(c.id===classId?'selected':'')+'>'+esc(c.name)+'</option>').join('')+'</select><span class="spacer"></span>'+btn('Class-wise PDF','print-class','btn secondary')+btn('Teacher-wise PDF','print-teacher','btn secondary')+'</div><div class="notice">Before generating, add teachers with eligible subjects/classes and add each class-subject weekly period requirement. Generation replaces the current timetable.</div><div class="panel">'+(classes.length?'<div class="schedule-scroll"><table class="schedule"><thead><tr>'+heads.map(h=>'<th>'+h+'</th>').join('')+'</tr></thead><tbody>'+rows+'</tbody></table></div>':empty('Add classes first','Create at least one class to build its timetable.'))+'</div><p class="hint" style="margin-top:12px">Saved timetable slots: '+slots.length+' · '+teachers.length+' teachers · '+subjects.length+' subject records</p>';
 }
 async function generateTimetable(){
  const [classes,subjects,teachers,s]=await Promise.all(['classes','subjects','teachers','settings'].map(x=>x==='settings'?setting():all(x)));
@@ -114,6 +114,8 @@ document.addEventListener('click',async e=>{const b=e.target.closest('[data-acti
  else if(a==='new-fixture')await createFixture();
  else if(a==='backup')await backup();
  else if(a==='reset')await resetAll();
+ else if(a==='print-class')await printTimetables('class');
+ else if(a==='print-teacher')await printTimetables('teacher');
  else if(a==='print')window.print();
  }catch(err){console.error(err);toast(err.message||'Action failed')}
 });
