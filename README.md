@@ -28,3 +28,5 @@ This source is published for review and personal use by its owner. No permission
 
 ## Important
 A backup file is not a sync service. Keep copies somewhere safe, especially before changing phones or reinstalling the app.
+
+<!-- Fresh commit to trigger a clean GitHub Pages deployment. -->
