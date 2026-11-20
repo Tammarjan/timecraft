@@ -66,93 +66,76 @@ async function timetablePage(){
 async function generateTimetable(){
  const [classes,subjects,teachers,s,maps]=await Promise.all(['classes','subjects','teachers','settings','teachingAssignments'].map(x=>x==='settings'?setting():all(x)));
  if(!classes.length||!teachers.length||!subjects.length){toast('Add classes, subjects and teachers first');return}
- const days=(s.workingDays||DAYS).filter(d=>DAYS.includes(d));
+ const days=(s.workingDays||DAYS).filter(d=>DAYS.includes(d)),dayOrder=[...DAYS];
  if(!days.length){toast('Select at least one working day');return}
- const dayPeriods={};
- for(const day of days){const sc=scheduleForDay(s,day);dayPeriods[day]=[...(sc.beforeBreak||[]),...(sc.afterBreak||[])];if(!dayPeriods[day].length){toast('Add at least one period for '+day);return}}
- const tasks=[];
- for(const cl of classes)for(const sub of subjects.filter(x=>!x.classId||x.classId===cl.id)){
-  const count=Math.max(0,Number(sub.periods)||0);
-  for(let n=0;n<count;n++)tasks.push({classId:cl.id,className:cl.name,subjectId:sub.id,subjectName:sub.name,occurrence:n});
+ const periodsByDay={};
+ for(const day of days){const sc=scheduleForDay(s,day);periodsByDay[day]=[...(sc.beforeBreak||[]),...(sc.afterBreak||[])].length}
+ const totalPerClass=days.reduce((n,d)=>n+(periodsByDay[d]||0),0);
+ const requirements=[];
+ for(const cl of classes){
+  const classSubjects=subjects.filter(x=>!x.classId||x.classId===cl.id);
+  const totalRequired=classSubjects.reduce((n,x)=>n+Math.max(0,Number(x.periods)||0),0);
+  if(totalRequired>totalPerClass){toast(cl.name+' requires '+totalRequired+' periods but only '+totalPerClass+' slots are available. Check subject periods or school settings.');return}
+  for(const sub of classSubjects){
+   const count=Number(sub.periods)||0;
+   if(!Number.isInteger(count)||count<0){toast('Invalid weekly period count for '+cl.name+' — '+sub.name);return}
+   if(count>totalPerClass){toast(cl.name+' — '+sub.name+' requires more weekly periods than available slots.');return}
+   if(count)requirements.push({classId:cl.id,className:cl.name,subjectId:sub.id,subjectName:sub.name,remaining:count});
+  }
  }
- const teacherMap=new Map();
- const allowedTeachers=task=>{
-  const key=task.classId+':'+task.subjectId;
-  if(!teacherMap.has(key)){
-   const map=maps.find(x=>x.classId===task.classId&&x.subjectId===task.subjectId);
-   const ids=map?(map.teacherIds||[map.teacherId]).filter(Boolean):null;
-   teacherMap.set(key,teachers.filter(t=>(!ids||ids.includes(t.id))&&eligibleTeacher(t,task.subjectName,task.className)&&Number(t.maxPeriods??30)>0));
-  }
-  return teacherMap.get(key);
- };
- const subjectCounts=new Map();
- for(const t of tasks)subjectCounts.set(t.classId+':'+t.subjectId,(subjectCounts.get(t.classId+':'+t.subjectId)||0)+1);
- const capacity=classes.reduce((sum,cl)=>sum+days.reduce((n,d)=>n+dayPeriods[d].length,0),0);
- const runAttempt=()=>{
-  const placed=[],teacherLoad={},classDayPeriod=new Set(),teacherDayPeriod=new Set();
-  const key=(...v)=>v.join('|');
-  const canPlace=(task,day,period,teacher)=>!classDayPeriod.has(key(task.classId,day,period))&&!teacherDayPeriod.has(key(teacher.id,day,period))&&(teacherLoad[teacher.id]||0)<Number(teacher.maxPeriods??30);
-  const put=(task,day,period,teacher)=>{
-   const pi=dayPeriods[day][period-1];
-   placed.push({...task,day,period,periodName:pi.name,start:pi.start,end:pi.end,teacherId:teacher.id,teacherName:teacher.name});
-   classDayPeriod.add(key(task.classId,day,period));teacherDayPeriod.add(key(teacher.id,day,period));teacherLoad[teacher.id]=(teacherLoad[teacher.id]||0)+1;
-  };
-  // Reserve English in period 1 on as many distinct working days as required.
-  for(const cl of classes){
-   const english=subjects.find(x=>x.classId===cl.id&&String(x.name).trim().toLowerCase()==='english');
-   if(!english)continue;
-   const task={classId:cl.id,className:cl.name,subjectId:english.id,subjectName:english.name};
-   const needed=Math.max(0,Number(english.periods)||0),eligible=allowedTeachers(task);
-   const englishDays=days.slice().sort(()=>Math.random()-.5);
-   let count=0;
-   for(const day of englishDays){
-    if(count>=needed)break;
-    if(!dayPeriods[day][0]||classDayPeriod.has(key(cl.id,day,1)))continue;
-    const candidates=eligible.filter(t=>canPlace(task,day,1,t)).sort((a,b)=>(teacherLoad[a.id]||0)-(teacherLoad[b.id]||0));
-    if(candidates.length){put(task,day,1,candidates[0]);count++}
-   }
-  }
-  // Most-constrained subjects first; shuffle ties so independent attempts explore different layouts.
-  const remaining=tasks.filter(t=>String(t.subjectName).trim().toLowerCase()!=='english');
-  remaining.sort((a,b)=>{
-   const ac=allowedTeachers(a).length,bc=allowedTeachers(b).length;
-   return ac-bc||subjectCounts.get(b.classId+':'+b.subjectId)-subjectCounts.get(a.classId+':'+a.subjectId)||Math.random()-.5;
-  });
-  for(const task of remaining){
-   const eligible=allowedTeachers(task),options=[];
-   for(const day of days)for(let p=1;p<=dayPeriods[day].length;p++){
-    if(classDayPeriod.has(key(task.classId,day,p)))continue;
-    for(const teacher of eligible)if(canPlace(task,day,p,teacher)){
-     const adjacent=placed.filter(x=>x.teacherId===teacher.id&&x.day===day&&Math.abs(x.period-p)===1).length;
-     const sameClassDay=placed.filter(x=>x.classId===task.classId&&x.day===day).length;
-     const score=adjacent*35+(teacherLoad[teacher.id]||0)*2+sameClassDay+Math.random()*8;
-     options.push({day,period:p,teacher,score});
+ const eligible=new Map();
+ for(const req of requirements){
+  const map=maps.find(x=>x.classId===req.classId&&x.subjectId===req.subjectId);
+  const ids=map?(map.teacherIds||[map.teacherId]).filter(Boolean):null;
+  const candidates=teachers.filter(t=>(!ids||ids.includes(t.id))&&eligibleTeacher(t,req.subjectName,req.className)&&Number(t.maxPeriods??30)>0);
+  eligible.set(req.classId+'|'+req.subjectId,candidates.map(t=>t.id));
+  if(!candidates.length){toast('No eligible teacher assigned to '+req.className+' — '+req.subjectName+'. Check Teacher Assignments.');return}
+ }
+ requirements.sort((a,b)=>{
+  const ae=String(a.subjectName).trim().toLowerCase()==='english',be=String(b.subjectName).trim().toLowerCase()==='english';
+  if(ae!==be)return ae?-1:1;
+  const ac=eligible.get(a.classId+'|'+a.subjectId).length,bc=eligible.get(b.classId+'|'+b.subjectId).length;
+  return ac-bc||b.remaining-a.remaining;
+ });
+ const workload=new Map(teachers.map(t=>[t.id,0])),teacherSlots=new Set(),classSlots=new Set(),output=[];
+ const key=(...v)=>v.join('|');
+ for(const req of requirements){
+  let lastDayIndex=-1;
+  while(req.remaining>0){
+   const candidates=[];
+   for(let di=0;di<dayOrder.length;di++){
+    const day=dayOrder[di];if(!days.includes(day))continue;
+    for(let period=1;period<=(periodsByDay[day]||0);period++){
+     if(classSlots.has(key(req.classId,day,period)))continue;
+     if(String(req.subjectName).trim().toLowerCase()==='english'&&period!==1)continue;
+     for(const teacherId of eligible.get(req.classId+'|'+req.subjectId)){
+      const teacher=teachers.find(t=>t.id===teacherId),max=Number(teacher?.maxPeriods??30);
+      if(!teacher||!workload.has(teacherId)||workload.get(teacherId)>=max||teacherSlots.has(key(teacherId,day,period)))continue;
+      const consecutive=teacherSlots.has(key(teacherId,day,period-1))||teacherSlots.has(key(teacherId,day,period+1));
+      const consecutivePenalty=consecutive?100000:0,dayPenalty=di===lastDayIndex?1:0;
+      candidates.push({day,dayIndex:di,period,teacher,score:consecutivePenalty+workload.get(teacherId)*100+dayPenalty*10+period});
+     }
     }
    }
-   options.sort((a,b)=>a.score-b.score);
-   if(options.length)put(task,options[0].day,options[0].period,options[0].teacher);
+   candidates.sort((x,y)=>x.score-y.score||x.dayIndex-y.dayIndex||x.period-y.period);
+   const chosen=candidates[0];
+   if(!chosen){
+    const shortage=req.className+' — '+req.subjectName;
+    toast('Cannot complete timetable for '+shortage+'. Teacher availability, assignments, weekly limits or school periods need checking. Existing timetable preserved.');
+    openModal('<h3>Timetable could not be completed</h3><p class="hint">'+esc(shortage)+' could not be placed. No partial timetable was saved. Check teacher assignments, weekly limits and available periods.</p><div class="form-actions"><button class="btn" data-action="close-modal">Close</button></div>');
+    return;
+   }
+   const pi=[...(scheduleForDay(s,chosen.day).beforeBreak||[]),...(scheduleForDay(s,chosen.day).afterBreak||[])][chosen.period-1];
+   classSlots.add(key(req.classId,chosen.day,chosen.period));teacherSlots.add(key(chosen.teacher.id,chosen.day,chosen.period));
+   workload.set(chosen.teacher.id,workload.get(chosen.teacher.id)+1);
+   output.push({classId:req.classId,className:req.className,subjectId:req.subjectId,subjectName:req.subjectName,day:chosen.day,period:chosen.period,periodName:pi.name,start:pi.start,end:pi.end,teacherId:chosen.teacher.id,teacherName:chosen.teacher.name});
+   lastDayIndex=chosen.dayIndex;req.remaining--;
   }
-  return placed;
- };
- // Greedy placement can paint itself into a corner. Run many varied schedules and keep the fullest.
- let best=[],attempts=1200;
- for(let i=0;i<attempts;i++){
-  const candidate=runAttempt();
-  if(candidate.length>best.length)best=candidate;
-  if(best.length===tasks.length||best.length>=capacity)break;
  }
- const placed=best,remainingCount=Math.max(0,tasks.length-placed.length);
- const tx=db.transaction('slots','readwrite'),st=tx.objectStore('slots');st.clear();placed.forEach(x=>st.add(x));
+ const tx=db.transaction('slots','readwrite'),st=tx.objectStore('slots');st.clear();output.forEach(x=>st.add(x));
  await new Promise((res,rej)=>{tx.oncomplete=res;tx.onerror=()=>rej(tx.error)});
- toast('Generated '+placed.length+' of '+tasks.length+' requested periods'+(remainingCount?' · '+remainingCount+' unfilled':''));
- render();
- if(remainingCount){
-  const summary=tasks.reduce((out,t)=>{const n=placed.filter(x=>x.classId===t.classId&&x.subjectId===t.subjectId).length,need=subjectCounts.get(t.classId+':'+t.subjectId);if(n<need){const k=t.className+' — '+t.subjectName;if(!out.has(k))out.set(k,{scheduled:n,required:need});}return out},new Map());
-  const reasons=[...summary].map(([name,v])=>name+' ('+v.scheduled+'/'+v.required+')');
-  openModal('<h3>Timetable generated with '+remainingCount+' gaps</h3><p class="hint">Generator ne '+attempts+' different arrangements try kiye aur sab se complete timetable save kiya. Same subject ko zaroorat par aik din mein dobara schedule kiya ja sakta hai; English period 1 mein hi rakhi gayi hai. Assigned teacher restrictions aur teacher clashes enforce hain.</p><div class="notice" style="max-height:240px;overflow:auto">'+reasons.map(esc).join('<br>')+'</div><div class="form-actions"><button class="btn" data-action="close-modal">Close</button></div>');
- }else{
-  openModal('<h3>Timetable generated successfully</h3><p class="hint">All '+tasks.length+' requested periods have been placed without teacher or class clashes.</p><div class="form-actions"><button class="btn" data-action="close-modal">Close</button></div>');
- }
+ toast('Timetable generated successfully · '+output.length+' periods');render();
+ openModal('<h3>Timetable generated successfully</h3><p class="hint">All '+output.length+' requested periods placed. Smart School scheduling logic applied: most-constrained subjects first, balanced teacher workload, spread subject periods across days, and avoid consecutive teacher periods unless necessary. No class or teacher clashes.</p><div class="form-actions"><button class="btn" data-action="close-modal">Close</button></div>');
 }
 async function editSlot(id){
  const [slots,teachers,subjects,maps]=await Promise.all(['slots','teachers','subjects','teachingAssignments'].map(all)),slot=slots.find(x=>x.id===Number(id));if(!slot)return;
