@@ -6,3 +6,4 @@
 @media print{
  body{background:#fff;color:#111}.sidebar,.topbar,.welcome .btn,.toolbar,.notice,footer,.toast{display:none!important}.app-shell,.main{display:block;min-height:0}.content{padding:0;max-width:none}.panel,.schedule-scroll{box-shadow:none;border:0}.schedule{min-width:0;width:100%;border-collapse:collapse}.schedule th,.schedule td{border:1px solid #222;color:#111}.slot{background:#fff!important;color:#111!important;border-radius:0;padding:2px}.slot small{color:#333!important}.schedule td{height:58px} @page{size:A4 landscape;margin:12mm}
 }
+.schedule th small{display:block;font-size:8px;font-weight:500;color:#929db0;margin-top:3px}.schedule .break-head{width:5%;font-size:10px}.schedule .break-cell{padding:0;background:#f8f9fc}.schedule .break-cell span{writing-mode:vertical-rl;transform:rotate(180deg);font-size:10px;font-weight:700;color:#7c879c;letter-spacing:.5px}
