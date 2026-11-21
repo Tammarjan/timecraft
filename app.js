@@ -12,7 +12,7 @@ function eligibleTeacher(t,subjectName,className){
  const classes=(t.classes||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean);
  return (!subjects.length||subjects.includes(String(subjectName).trim().toLowerCase()))&&(!classes.length||classes.includes(String(className).trim().toLowerCase()));
 }
-function slotCountsForTeacher(slot,teacher){if(slot.teacherId!=null)return String(slot.teacherId)===String(teacher.id);return String(slot.teacherName||'').split('/').map(n=>n.trim().toLowerCase()).includes(String(teacher.name||'').trim().toLowerCase())}
+function slotCountsForTeacher(slot,teacher){const ids=slot.teacherIds|| (slot.teacherId!=null?[slot.teacherId]:[]);if(ids.length)return ids.some(id=>String(id)===String(teacher.id));return String(slot.teacherName||'').split('/').map(n=>n.trim().toLowerCase()).includes(String(teacher.name||'').trim().toLowerCase())}
 function regularTeacherLoad(slots,teacher){return slots.filter(slot=>slotCountsForTeacher(slot,teacher)).length}
 const defaultDaySchedule={assemblyStart:'08:30',assemblyEnd:'09:00',breakStart:'11:30',breakEnd:'12:00',offTime:'14:00',beforeBreak:[{name:'P1',start:'09:00',end:'09:40'},{name:'P2',start:'09:40',end:'10:20'},{name:'P3',start:'10:20',end:'10:55'},{name:'P4',start:'10:55',end:'11:30'}],afterBreak:[{name:'P5',start:'12:00',end:'12:40'},{name:'P6',start:'12:40',end:'13:20'},{name:'P7',start:'13:20',end:'14:00'}]};
 const defaultFridaySchedule={assemblyStart:'08:30',assemblyEnd:'09:00',breakStart:'11:30',breakEnd:'12:00',offTime:'12:30',beforeBreak:[{name:'P1',start:'09:00',end:'09:50'},{name:'P2',start:'09:50',end:'10:40'},{name:'P3',start:'10:40',end:'11:30'}],afterBreak:[{name:'P4',start:'12:00',end:'12:15'},{name:'P5',start:'12:15',end:'12:30'}]};
@@ -110,13 +110,14 @@ async function generateTimetable(){
     for(let period=1;period<=(periodsByDay[day]||0);period++){
      if(classSlots.has(key(req.classId,day,period)))continue;
      if(String(req.subjectName).trim().toLowerCase()==='english'&&period!==1)continue;
-     for(const teacherId of eligible.get(req.classId+'|'+req.subjectId)){
-      const teacher=teachers.find(t=>t.id===teacherId),max=Number(teacher?.maxPeriods??30);
-      if(!teacher||!workload.has(teacherId)||workload.get(teacherId)>=max||teacherSlots.has(key(teacherId,day,period)))continue;
-      const consecutive=teacherSlots.has(key(teacherId,day,period-1))||teacherSlots.has(key(teacherId,day,period+1));
-      const consecutivePenalty=consecutive?100000:0,dayPenalty=di===lastDayIndex?1:0;
-      candidates.push({day,dayIndex:di,period,teacher,score:consecutivePenalty+workload.get(teacherId)*100+dayPenalty*10+period});
-     }
+     const assignedIds=eligible.get(req.classId+'|'+req.subjectId);
+    const assignedTeachers=assignedIds.map(id=>teachers.find(t=>t.id===id)).filter(Boolean);
+    if(assignedTeachers.length!==assignedIds.length)continue;
+    if(assignedTeachers.some(t=>workload.get(t.id)>=Number(t.maxPeriods??30)||teacherSlots.has(key(t.id,day,period))))continue;
+    const consecutive=assignedTeachers.some(t=>teacherSlots.has(key(t.id,day,period-1))||teacherSlots.has(key(t.id,day,period+1)));
+    const loadScore=assignedTeachers.reduce((n,t)=>n+workload.get(t.id),0);
+    const consecutivePenalty=consecutive?100000:0,dayPenalty=di===lastDayIndex?1:0;
+    candidates.push({day,dayIndex:di,period,teachers:assignedTeachers,score:consecutivePenalty+loadScore*100+dayPenalty*10+period});
     }
    }
    candidates.sort((x,y)=>x.score-y.score||x.dayIndex-y.dayIndex||x.period-y.period);
@@ -128,9 +129,9 @@ async function generateTimetable(){
     return;
    }
    const pi=[...(scheduleForDay(s,chosen.day).beforeBreak||[]),...(scheduleForDay(s,chosen.day).afterBreak||[])][chosen.period-1];
-   classSlots.add(key(req.classId,chosen.day,chosen.period));teacherSlots.add(key(chosen.teacher.id,chosen.day,chosen.period));
-   workload.set(chosen.teacher.id,workload.get(chosen.teacher.id)+1);
-   output.push({classId:req.classId,className:req.className,subjectId:req.subjectId,subjectName:req.subjectName,day:chosen.day,period:chosen.period,periodName:pi.name,start:pi.start,end:pi.end,teacherId:chosen.teacher.id,teacherName:chosen.teacher.name});
+   classSlots.add(key(req.classId,chosen.day,chosen.period));
+   chosen.teachers.forEach(t=>{teacherSlots.add(key(t.id,chosen.day,chosen.period));workload.set(t.id,workload.get(t.id)+1)});
+   output.push({classId:req.classId,className:req.className,subjectId:req.subjectId,subjectName:req.subjectName,day:chosen.day,period:chosen.period,periodName:pi.name,start:pi.start,end:pi.end,teacherId:chosen.teachers[0].id,teacherIds:chosen.teachers.map(t=>t.id),teacherName:chosen.teachers.map(t=>t.name).join(' / ')});
    lastDayIndex=chosen.dayIndex;req.remaining--;
   }
  }
@@ -329,7 +330,7 @@ async function printTimetables(kind){
  const days=(s.workingDays||DAYS).filter(d=>DAYS.includes(d)),schedules=days.map(day=>({day,schedule:scheduleForDay(s,day)})),maxBefore=Math.max(0,...schedules.map(x=>(x.schedule.beforeBreak||[]).length)),maxAfter=Math.max(0,...schedules.map(x=>(x.schedule.afterBreak||[]).length));
  const people=kind==='class'?classes:teachers;
  const pages=people.map(person=>{
-  const relevant=kind==='class'?slots.filter(x=>x.classId===person.id):slots.filter(x=>x.teacherId===person.id);if(!relevant.length)return '';
+  const relevant=kind==='class'?slots.filter(x=>x.classId===person.id):slots.filter(x=>(x.teacherIds||[x.teacherId]).includes(person.id));if(!relevant.length)return '';
   const header=kind==='class'?'Class - '+person.name:'Teacher '+person.name;
   const th='<tr><th>Day</th>'+Array.from({length:maxBefore},(_,i)=>'<th>P'+(i+1)+'</th>').join('')+'<th class="break-head">Break</th>'+Array.from({length:maxAfter},(_,i)=>'<th>P'+(maxBefore+i+1)+'</th>').join('')+'</tr>';
   const body=schedules.map(({day,schedule})=>{const before=schedule.beforeBreak||[],after=schedule.afterBreak||[],cell=(period,pi)=>{const x=relevant.find(z=>z.day===day&&z.period===period+1);const time=pi?'<small>'+esc(pi.name)+' '+esc(pi.start)+'–'+esc(pi.end)+'</small>':'';if(!x)return '<td>'+time+'</td>';return kind==='class'?'<td>'+time+'<b>'+esc(x.subjectName)+'</b><small>'+esc(x.teacherName)+'</small></td>':'<td>'+time+'<small>Class - '+esc(x.className)+'</small><b>'+esc(x.subjectName)+'</b></td>'};
