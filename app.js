@@ -259,7 +259,7 @@ async function downloadFixtureReport(date,records,teachers,slots,settings){
  // Exact image-inspired nine-column table.
  const cols=[['#',30],['TEACHER NAME',120],['SUBJECT',96],['CLASS',52],['PERIOD (TIME)',104],['FOR (ABSENT TEACHER)',134],['WEEKLY WORKLOAD',88],['STATUS',92],['SIGNATURE',90]];
  const tx=12,tw=cols.reduce((n,c)=>n+c[1],0),hh=38,rh=30;let y=437,cx=tx;
- cols.forEach(([name,w])=>{rect(cx,y-hh,w,hh,'0.025 0.09 0.17','0.62 0.68 0.74',.55);const lines=wrap(name,Math.max(5,Math.floor(w/5.2)));lines.slice(0,2).forEach((v,i)=>center(cx,y-hh+22-i*10,w,6.8,v,'F2','1 1 1'));cx+=w});
+ cols.forEach(([name,w])=>{rect(cx,y-hh,w,hh,'0.025 0.09 0.17','0.62 0.68 0.74',.55);const lines=name==='WEEKLY WORKLOAD'?['WEEKLY','WORKLOAD']:wrap(name,Math.max(5,Math.floor(w/5.2)));lines.slice(0,2).forEach((v,i)=>center(cx,y-hh+22-i*10,w,6.8,v,'F2','1 1 1'));cx+=w});
  y-=hh;
  if(rows.length){
   rows.forEach((f,i)=>{
