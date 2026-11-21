@@ -191,10 +191,10 @@ async function autoAssignFixtures(){
  if(!(settings.workingDays||DAYS).includes(day)){toast(day+' is not a working day in Settings');return}
  const absentSet=new Set(absentIds),absent=teachers.filter(t=>absentSet.has(t.id));
  const load=new Map(teachers.map(t=>[t.id,slots.filter(x=>x.teacherId===t.id).length+fixtures.filter(f=>f.substituteId===t.id&&f.date!==date).length]));
- const dayAssignments=fixtures.filter(f=>f.date===date&&f.substituteId);
+ const dayAssignments=fixtures.filter(f=>f.date===date&&f.substituteId&&!absentSet.has(f.absentId));
  const alreadyUsedToday=new Set(dayAssignments.map(f=>f.substituteId));
  const occupied=new Set(slots.filter(x=>x.day===day).map(x=>x.teacherId+'|'+x.period));
- fixtures.filter(f=>f.date===date&&f.substituteId).forEach(f=>occupied.add(f.substituteId+'|'+f.period));
+ fixtures.filter(f=>f.date===date&&f.substituteId&&!absentSet.has(f.absentId)).forEach(f=>occupied.add(f.substituteId+'|'+f.period));
  const pending=[];
  for(const absentTeacher of absent){
   const lessons=slots.filter(x=>x.teacherId===absentTeacher.id&&x.day===day).sort((a,b)=>a.period-b.period);
@@ -203,11 +203,11 @@ async function autoAssignFixtures(){
    choices.sort((a,b)=>(load.get(a.id)||0)-(load.get(b.id)||0)||a.name.localeCompare(b.name));
    const sub=choices[0]||null;
    if(sub){alreadyUsedToday.add(sub.id);occupied.add(sub.id+'|'+lesson.period);load.set(sub.id,(load.get(sub.id)||0)+1)}
-   pending.push({date,day,absentId:absentTeacher.id,absentName:absentTeacher.name,classId:lesson.classId,className:lesson.className,subjectId:lesson.subjectId,subjectName:lesson.subjectName,period:lesson.period,periodName:lesson.periodName||('P'+lesson.period),start:lesson.start||'',end:lesson.end||'',substituteId:sub?.id||null,substituteName:sub?.name||'',reason:sub?'Auto-assigned (lowest weekly load, free in period; max one auto fixture today)':'No eligible free teacher available'});
+   pending.push({date,day,absentId:absentTeacher.id,absentName:absentTeacher.name,classId:lesson.classId,className:lesson.className,subjectId:lesson.subjectId,subjectName:lesson.subjectName,period:lesson.period,periodName:lesson.periodName||('P'+lesson.period),start:lesson.start||'',end:lesson.end||'',substituteId:sub?.id||null,substituteName:sub?.name||'',reason:sub?'Auto-assigned (lowest weekly load, free in period; max one auto fixture today)':'No eligible free teacher available',assignmentSource:'auto'});
   }
  }
  const tx=db.transaction('fixtures','readwrite'),store=tx.objectStore('fixtures');
- fixtures.filter(f=>f.date===date&&absentSet.has(f.absentId)).forEach(f=>store.delete(f.id));
+ fixtures.filter(f=>f.date===date&&absentSet.has(f.absentId)&&f.assignmentSource!=='manual').forEach(f=>store.delete(f.id));
  pending.forEach(f=>store.add(f));
  await new Promise((res,rej)=>{tx.oncomplete=res;tx.onerror=()=>rej(tx.error)});
  toast(pending.filter(x=>x.substituteId).length+' auto fixtures assigned; '+pending.filter(x=>!x.substituteId).length+' need manual action');render();
@@ -218,7 +218,7 @@ async function manualFixture(id){
  const occupied=slots.filter(x=>x.day===f.day&&x.period===f.period).map(x=>x.teacherId).filter(x=>x!==f.absentId).concat(fixtures.filter(x=>x.date===f.date&&x.period===f.period&&x.substituteId&&x.id!==f.id).map(x=>x.substituteId));
  const candidates=teachers.filter(t=>t.id!==f.absentId&&eligibleTeacher(t,f.subjectName,f.className)&&!occupied.includes(t.id)&&Number(t.maxPeriods??30)>load(t)).sort((a,b)=>load(a)-load(b)||a.name.localeCompare(b.name));
  openModal('<h3>Manual fixture assignment</h3><p class="hint">'+esc(f.date)+' · '+esc(f.day)+' · '+esc(f.className)+' · '+esc(f.subjectName)+' · '+esc(f.periodName||('P'+f.period))+'</p><p>Only eligible teachers free in this period are listed. Lowest weekly load appears first. Manual assignment can give a teacher a second fixture on the same day if there is no period clash.</p><form id="manualFixtureForm"><div class="field"><label>Substitute teacher</label><select name="substituteId" required><option value="">Choose free teacher</option>'+candidates.map(t=>'<option value="'+t.id+'">'+esc(t.name)+' — '+load(t)+' weekly load</option>').join('')+'</select></div><div class="form-actions"><button type="button" class="btn ghost" data-action="close-modal">Cancel</button><button class="btn" '+(!candidates.length?'disabled':'')+'>Assign manually</button></div></form>');
- $('#manualFixtureForm').addEventListener('submit',async e=>{e.preventDefault();const id2=Number(new FormData(e.target).get('substituteId')),sub=candidates.find(t=>t.id===id2);if(!sub) return;const latest=(await all('fixtures')).find(x=>x.id===f.id);if(!latest)return;await put('fixtures',{...latest,substituteId:sub.id,substituteName:sub.name,reason:'Manually assigned'});$('.modal-backdrop')?.remove();toast('Manual fixture assigned');render()});
+ $('#manualFixtureForm').addEventListener('submit',async e=>{e.preventDefault();const id2=Number(new FormData(e.target).get('substituteId')),sub=candidates.find(t=>t.id===id2);if(!sub) return;const latest=(await all('fixtures')).find(x=>x.id===f.id);if(!latest)return;await put('fixtures',{...latest,substituteId:sub.id,substituteName:sub.name,reason:'Manually assigned',assignmentSource:'manual'});$('.modal-backdrop')?.remove();toast('Manual fixture assigned');render()});
 }
 function downloadFixtureReport(records){
  const clean=v=>String(v??'').replace(/[^\x20-\x7E]/g,'?').replace(/[()\\]/g,'\\$&');
