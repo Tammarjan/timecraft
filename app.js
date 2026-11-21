@@ -119,6 +119,16 @@ async function generateTimetable(){
     const assignedTeachers=assignedIds.map(id=>teachers.find(t=>t.id===id)).filter(Boolean);
     if(assignedTeachers.length!==assignedIds.length)continue;
     if(assignedTeachers.some(t=>workload.get(t.id)>=Number(t.maxPeriods??30)||teacherSlots.has(key(t.id,day,period))))continue;
+    // Prefer a gap between lessons. A pair of consecutive periods is allowed
+    // only when no non-consecutive placement is available (high score penalty).
+    // Never create a run of three consecutive periods for any teacher.
+    const createsTriple=assignedTeachers.some(t=>{
+     const occupied=p=>teacherSlots.has(key(t.id,day,p));
+     return (occupied(period-1)&&occupied(period-2))||
+            (occupied(period-1)&&occupied(period+1))||
+            (occupied(period+1)&&occupied(period+2));
+    });
+    if(createsTriple)continue;
     const consecutive=assignedTeachers.some(t=>teacherSlots.has(key(t.id,day,period-1))||teacherSlots.has(key(t.id,day,period+1)));
     const loadScore=assignedTeachers.reduce((n,t)=>n+workload.get(t.id),0);
     const consecutivePenalty=consecutive?100000:0,dayPenalty=di===lastDayIndex?1:0;
