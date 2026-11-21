@@ -260,9 +260,15 @@ async function downloadFixtureReport(date,records,teachers,slots,settings){
  rect(245,454,352,24,'0.05 0.31 0.58');
  center(245,460,352,15,'FIXTURE ASSIGNMENTS','F3','1 1 1');
  // Exact image-inspired nine-column table.
+ // Responsive one-page layout: gradual scaling by fixture count.
+ const count=rows.length;
+ const rh=count<=5?30:count<=10?30-(count-5)*1.4:count<=12?23-(count-10)*.8:count<=17?21.4-(count-12)*.38:19.5;
+ const hh=count<=5?38:count<=12?34:30;
+ const bodyFont=count<=5?7.3:count<=10?6.8-(count-6)*.13:count<=12?6.28-(count-10)*.18:5.92-(count-13)*.07;
+ const headFont=count<=5?6.8:count<=12?6.2:5.8;
  const cols=[['#',30],['TEACHER NAME',120],['SUBJECT',96],['CLASS',52],['PERIOD (TIME)',104],['FOR (ABSENT TEACHER)',134],['WEEKLY WORKLOAD',88],['STATUS',92],['SIGNATURE',90]];
- const tx=12,tw=cols.reduce((n,c)=>n+c[1],0),hh=38,rh=30;let y=437,cx=tx;
- cols.forEach(([name,w])=>{rect(cx,y-hh,w,hh,'0.025 0.09 0.17','0.62 0.68 0.74',.55);const lines=name==='WEEKLY WORKLOAD'?['WEEKLY','WORKLOAD']:wrap(name,Math.max(5,Math.floor(w/5.2)));lines.slice(0,2).forEach((v,i)=>center(cx,y-hh+22-i*10,w,6.8,v,'F2','1 1 1'));cx+=w});
+ const tx=12,tw=cols.reduce((n,c)=>n+c[1],0);let y=437,cx=tx;
+ cols.forEach(([name,w])=>{rect(cx,y-hh,w,hh,'0.025 0.09 0.17','0.62 0.68 0.74',.55);const parts=name==='WEEKLY WORKLOAD'?['WEEKLY','WORKLOAD']:wrap(name,Math.max(5,Math.floor(w/(headFont*.76))));const shown=parts.slice(0,2),lineH=headFont*1.28;shown.forEach((v,i)=>center(cx,y-hh/2+(shown.length-1)*lineH/2-i*lineH-headFont*.34,w,headFont,v,'F2','1 1 1'));cx+=w});
  y-=hh;
  if(rows.length){
   rows.forEach((f,i)=>{
@@ -271,28 +277,33 @@ async function downloadFixtureReport(date,records,teachers,slots,settings){
    cols.forEach(([name,w],j)=>{
     rect(cx,y-rh,w,rh,i%2===0?'0.96 0.975 0.99':'1 1 1','0.68 0.73 0.79',.5);
     if(j===6)rect(cx+1,y-rh+1,w-2,rh-2,'0.84 0.90 0.98');
-    if(j===7){rect(cx+5,y-rh+8,w-10,14,f.substituteId?'0.04 0.48 0.20':'0.70 0.32 0.08');center(cx+5,y-rh+12,w-10,6.4,status,'F2','1 1 1')}
+    if(j===7){const bh=Math.max(8,Math.min(14,rh*.52));rect(cx+5,y-rh+(rh-bh)/2,w-10,bh,f.substituteId?'0.04 0.48 0.20':'0.70 0.32 0.08');center(cx+5,y-rh+(rh-bh)/2+bh*.34,w-10,Math.min(6.4,bodyFont*.88),status,'F2','1 1 1')}
     else{
-     const max=Math.max(4,Math.floor((w-8)/4.2)),parts=wrap(values[j],max).slice(0,2);
-     parts.forEach((v,k)=>center(cx+2,y-rh+17-k*9,w-4, j===0?9:7.3,v,j===0||j===6?'F2':'F1','0.035 0.06 0.10'));
+     const max=Math.max(4,Math.floor((w-8)/(bodyFont*.58))),parts=wrap(values[j],max).slice(0,2),lineH=Math.min(9,bodyFont*1.22);
+     const startY=y-rh/2+(parts.length-1)*lineH/2-bodyFont*.34;
+     parts.forEach((v,k)=>center(cx+2,startY-k*lineH,w-4,j===0?Math.min(8.5,bodyFont+1):bodyFont,v,j===0||j===6?'F2':'F1','0.035 0.06 0.10'));
     }
     cx+=w;
    });
    y-=rh;
   });
  }else{
-  rect(tx,y-rh,tw,rh,'0.97 0.98 0.99','0.68 0.73 0.79',.5);center(tx,y-rh+11,tw,9,'NO FIXTURE ASSIGNMENTS FOR THIS DATE','F2','0.35 0.40 0.48');y-=rh;
+  rect(tx,y-rh,tw,rh,'0.97 0.98 0.99','0.68 0.73 0.79',.5);center(tx,y-rh/2-3,tw,9,'NO FIXTURE ASSIGNMENTS FOR THIS DATE','F2','0.35 0.40 0.48');y-=rh;
  }
- // Summary and notes panels, matching the reference's two-card lower section.
- const panelY=66,panelH=119,leftX=16,leftW=310,rightX=350,rightW=476;
- rect(leftX,panelY,leftW,panelH,'0.99 0.995 1','0.10 0.15 0.22',.8);rect(leftX,panelY+panelH-27,leftW,27,'0.025 0.09 0.17');
- txt(leftX+17,panelY+panelH-19,12,'SUMMARY (TODAY)','F2','1 1 1');
- const summary=[['Total Fixtures Assigned',String(assigned.length)],['Total Pending',String(pending.length)],['Absent Teachers',String(uniqueAbsent)],['Assigned Teachers',String(uniqueSub)]];
- summary.forEach((v,i)=>{const yy=panelY+panelH-48-i*20;if(i%2===0)rect(leftX+9,yy-5,leftW-18,18,'0.88 0.93 0.99');txt(leftX+17,yy,9,v[0],'F2');right(leftX+leftW-22,yy,10,v[1],'F2')});
- rect(rightX,panelY,rightW,panelH,'0.99 0.995 1','0.10 0.15 0.22',.8);rect(rightX,panelY+panelH-27,rightW,27,'0.025 0.09 0.17');
- txt(rightX+17,panelY+panelH-19,12,'NOTES','F2','1 1 1');
- const notes=['Fixtures are auto-assigned by lowest weekly workload and period availability.','Only one fixture is auto-assigned per substitute teacher per day.','Additional fixtures may be assigned manually by Admin/Head.'];
- notes.forEach((v,i)=>{rect(rightX+17,panelY+panelH-49-i*22,5,5,'0.06 0.12 0.20');txt(rightX+31,panelY+panelH-48-i*22,8,v,'F1','0.08 0.10 0.14')});
+ // Summary and notes remain for up to 12; remove both panels from 13 onwards.
+ if(count<=12){
+  const compact=count>=9,panelY=count<=5?66:count<=8?58:50,panelH=count<=5?119:count<=8?88:72,leftX=16,leftW=310,rightX=350,rightW=476,barH=count<=5?27:compact?19:22;
+  rect(leftX,panelY,leftW,panelH,'0.99 0.995 1','0.10 0.15 0.22',.8);rect(leftX,panelY+panelH-barH,leftW,barH,'0.025 0.09 0.17');
+  txt(leftX+17,panelY+panelH-barH*.70,compact?9:count<=5?12:10,'SUMMARY (TODAY)','F2','1 1 1');
+  const summary=[['Total Fixtures Assigned',String(assigned.length)],['Total Pending',String(pending.length)],['Absent Teachers',String(uniqueAbsent)],['Assigned Teachers',String(uniqueSub)]];
+  const summaryFont=compact?7.1:count<=5?9:8.1,gap=(panelH-barH-10)/4;
+  summary.forEach((v,i)=>{const yy=panelY+panelH-barH-8-(i+.75)*gap;if(i%2===0)rect(leftX+9,yy-3,leftW-18,Math.max(10,gap-1),'0.88 0.93 0.99');txt(leftX+17,yy,summaryFont,v[0],'F2');right(leftX+leftW-22,yy,summaryFont+.5,v[1],'F2')});
+  rect(rightX,panelY,rightW,panelH,'0.99 0.995 1','0.10 0.15 0.22',.8);rect(rightX,panelY+panelH-barH,rightW,barH,'0.025 0.09 0.17');
+  txt(rightX+17,panelY+panelH-barH*.70,compact?9:count<=5?12:10,'NOTES','F2','1 1 1');
+  const notes=['Fixtures are auto-assigned by lowest weekly workload and period availability.','Only one fixture is auto-assigned per substitute teacher per day.','Additional fixtures may be assigned manually by Admin/Head.'];
+  const noteFont=compact?6.1:count<=5?8:7.1,noteGap=compact?13:count<=5?22:17,notesTop=panelY+panelH-barH-(compact?13:22);
+  notes.forEach((v,i)=>{const yy=notesTop-i*noteGap;rect(rightX+17,yy-1.5,4,4,'0.06 0.12 0.20');txt(rightX+29,yy-1,noteFont,v,'F1','0.08 0.10 0.14')});
+ }
  // Footer bar with bright blue/gold end accents.
  rect(9,12,824,32,'0.025 0.055 0.105');rect(9,12,80,32,'0.02 0.30 0.70');rect(753,12,80,32,'0.02 0.30 0.70');
  line(112,28,265,28,'0.86 0.89 0.93',1.1);line(577,28,730,28,'0.86 0.89 0.93',1.1);
