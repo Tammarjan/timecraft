@@ -220,17 +220,26 @@ async function manualFixture(id){
  openModal('<h3>Manual fixture assignment</h3><p class="hint">'+esc(f.date)+' · '+esc(f.day)+' · '+esc(f.className)+' · '+esc(f.subjectName)+' · '+esc(f.periodName||('P'+f.period))+'</p><p>Only eligible teachers free in this period are listed. Lowest weekly load appears first. Manual assignment can give a teacher a second fixture on the same day if there is no period clash.</p><form id="manualFixtureForm"><div class="field"><label>Substitute teacher</label><select name="substituteId" required><option value="">Choose free teacher</option>'+candidates.map(t=>'<option value="'+t.id+'">'+esc(t.name)+' — '+load(t)+' weekly load</option>').join('')+'</select></div><div class="form-actions"><button type="button" class="btn ghost" data-action="close-modal">Cancel</button><button class="btn" '+(!candidates.length?'disabled':'')+'>Assign manually</button></div></form>');
  $('#manualFixtureForm').addEventListener('submit',async e=>{e.preventDefault();const id2=Number(new FormData(e.target).get('substituteId')),sub=candidates.find(t=>t.id===id2);if(!sub) return;const latest=(await all('fixtures')).find(x=>x.id===f.id);if(!latest)return;await put('fixtures',{...latest,substituteId:sub.id,substituteName:sub.name,reason:'Manually assigned',assignmentSource:'manual'});$('.modal-backdrop')?.remove();toast('Manual fixture assigned');render()});
 }
-function downloadFixtureReport(records){
- const clean=v=>String(v??'').replace(/[^\x20-\x7E]/g,'?').replace(/[()\\]/g,'\\$&');
- const lines=['TIMECRAFT - SUBSTITUTE FIXTURE REPORT','Generated: '+new Date().toLocaleString(),'Total fixture periods: '+records.length,'','DATE | DAY | CLASS | PERIOD | SUBJECT | ABSENT | SUBSTITUTE | STATUS'];
- records.slice().sort((a,b)=>(a.date||'').localeCompare(b.date||'')||(a.period||0)-(b.period||0)).forEach(f=>lines.push([f.date,f.day,f.className,f.periodName||('P'+f.period),f.subjectName,f.absentName,f.substituteName||'UNASSIGNED',f.reason||''].join(' | ')));
- const pages=[];for(let i=0;i<lines.length;i+=42)pages.push(lines.slice(i,i+42));
- const objs=[],add=o=>{objs.push(o);return objs.length};
- const font=add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'),pageIds=[];
- pages.forEach(linesPage=>{const stream='BT /F1 9 Tf 40 560 Td 12 TL '+linesPage.map((l,i)=>(i?'T* ':'')+'('+clean(l).slice(0,150)+') Tj').join(' ')+' ET',content=add('<< /Length '+stream.length+' >>\nstream\n'+stream+'\nendstream'),page=add('<< /Type /Page /Parent PAGES 0 R /MediaBox [0 0 842 595] /Resources << /Font << /F1 '+font+' 0 R >> >> /Contents '+content+' 0 R >>');pageIds.push(page)});
- const pagesId=add('<< /Type /Pages /Kids ['+pageIds.map(x=>x+' 0 R').join(' ')+'] /Count '+pageIds.length+' >>');
- pageIds.forEach(id=>objs[id-1]=objs[id-1].replace('PAGES',String(pagesId)));
- const catalog=add('<< /Type /Catalog /Pages '+pagesId+' 0 R >>');let pdf='%PDF-1.4\n',offsets=[0];objs.forEach((o,i)=>{offsets.push(pdf.length);pdf+=(i+1)+' 0 obj\n'+o+'\nendobj\n'});const xref=pdf.length;pdf+='xref\n0 '+(objs.length+1)+'\n0000000000 65535 f \n'+offsets.slice(1).map(n=>String(n).padStart(10,'0')+' 00000 n \n').join('')+'trailer\n<< /Size '+(objs.length+1)+' /Root '+catalog+' 0 R >>\nstartxref\n'+xref+'\n%%EOF';const blob=new Blob([pdf],{type:'application/pdf'});if('caches' in window){caches.open('timecraft-fixture-reports-v1').then(c=>c.put(new Request(location.origin+'/timecraft-fixture-report-'+new Date().toISOString().slice(0,10)+'.pdf'),new Response(blob,{headers:{'Content-Type':'application/pdf'}}))).catch(()=>{})}const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='TimeCraft-Fixture-Report-'+new Date().toISOString().slice(0,10)+'.pdf';a.click();setTimeout(()=>URL.revokeObjectURL(url),1500);toast('Offline PDF report downloaded');
+async function downloadFixtureReport(date,records,teachers,slots){
+ const day=DAYS[(new Date(date+'T12:00:00').getDay()+6)%7],rows=records.filter(f=>f.date===date).sort((a,b)=>(a.period||0)-(b.period||0));
+ const workloads=teachers.map(t=>({name:t.name,regular:slots.filter(v=>v.teacherId===t.id).length,fixtures:rows.filter(v=>v.substituteId===t.id).length})).filter(v=>v.regular||v.fixtures).sort((a,b)=>a.name.localeCompare(b.name));
+ const safe=v=>String(v??'').replace(/[^\x20-\x7E]/g,'?').replace(/[()\\]/g,'\\$&'),ops=[];
+ const txt=(x,y,z,v,b=false)=>ops.push('BT /'+(b?'F2':'F1')+' '+z+' Tf '+x+' '+y+' Td ('+safe(v)+') Tj ET');
+ const ln=(x,y,X,Y)=>ops.push('0.35 w '+x+' '+y+' m '+X+' '+Y+' l S');
+ const cell=(x,y,w,h,v,b=false)=>{ln(x,y,x+w,y);ln(x,y+h,x+w,y+h);ln(x,y,x,y+h);ln(x+w,y,x+w,y+h);txt(x+3,y+6,7,String(v).slice(0,Math.floor(w/4)),b)};
+ txt(300,566,13,'Teacher Fixture & Substitution Report',true);txt(350,552,8,'Date: '+date+'   Day: '+day);txt(18,529,9,'Fixture Assignments',true);
+ const cols=[['Day',55],['Period',42],['Class',55],['Subject',75],['Absent Teacher',135],['Substitute Teacher',135],['Status',65],['Teacher Signature',244]];
+ const x=18,h=18;let y=508,cx=x;cols.forEach(([n,w])=>{cell(cx,y,w,h,n,true);cx+=w});y-=h;
+ if(rows.length)rows.forEach(f=>{cx=x;[day,f.periodName||('P'+f.period),f.className,f.subjectName,f.absentName,f.substituteName||'Unassigned',f.substituteId?'assigned':'pending',''].forEach((v,i)=>{cell(cx,y,cols[i][1],h,v);cx+=cols[i][1]});y-=h});
+ else {txt(22,y-12,8,'No fixture assignments for this date.');y-=h}
+ y-=22;txt(18,y,9,'Weekly Teacher Workload',true);y-=18;
+ const wc=[['Teacher',300],['Regular weekly periods',180],['Fixtures on selected date',220],['Total',106]];cx=x;wc.forEach(([n,w])=>{cell(cx,y,w,h,n,true);cx+=w});y-=h;
+ workloads.forEach(t=>{cx=x;[t.name,t.regular,t.fixtures,t.regular+t.fixtures].forEach((v,i)=>{cell(cx,y,wc[i][1],h,v);cx+=wc[i][1]});y-=h});
+ txt(690,18,6,'Generated by Smart School Management');
+ const stream=ops.join('\n'),o=[],add=v=>(o.push(v),o.length),f1=add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'),f2=add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>'),c=add('<< /Length '+stream.length+' >>\nstream\n'+stream+'\nendstream'),p=add('<< /Type /Page /Parent PAGES 0 R /MediaBox [0 0 842 595] /Resources << /Font << /F1 '+f1+' 0 R /F2 '+f2+' 0 R >> >> /Contents '+c+' 0 R >>'),ps=add('<< /Type /Pages /Kids ['+p+' 0 R] /Count 1 >>');
+ o[p-1]=o[p-1].replace('PAGES',String(ps));const cat=add('<< /Type /Catalog /Pages '+ps+' 0 R >>');let pdf='%PDF-1.4\n',offs=[0];o.forEach((v,i)=>{offs.push(pdf.length);pdf+=(i+1)+' 0 obj\n'+v+'\nendobj\n'});const xr=pdf.length;pdf+='xref\n0 '+(o.length+1)+'\n0000000000 65535 f \n'+offs.slice(1).map(v=>String(v).padStart(10,'0')+' 00000 n \n').join('')+'trailer\n<< /Size '+(o.length+1)+' /Root '+cat+' 0 R >>\nstartxref\n'+xr+'\n%%EOF';
+ const blob=new Blob([pdf],{type:'application/pdf'});if('caches' in window)caches.open('timecraft-fixture-reports-v2').then(v=>v.put(new Request(location.origin+'/timecraft-fixture-report-'+date+'.pdf'),new Response(blob,{headers:{'Content-Type':'application/pdf'}}))).catch(()=>{});
+ const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='Teacher-Fixture-Report-'+date+'.pdf';a.click();setTimeout(()=>URL.revokeObjectURL(url),1500);toast('Fixture report downloaded');
 }
 async function printTimetables(kind){
  const [classes,teachers,slots,s]=await Promise.all(['classes','teachers','slots','settings'].map(x=>x==='settings'?setting():all(x)));
@@ -267,7 +276,7 @@ document.addEventListener('click',async e=>{const b=e.target.closest('[data-acti
  else if(a==='new-fixture')await createFixture();
  else if(a==='auto-fixtures')await autoAssignFixtures();
  else if(a.startsWith('manual-fixture-'))await manualFixture(a.slice(15));
- else if(a==='fixture-report')downloadFixtureReport(await all('fixtures'));
+ else if(a==='fixture-report'){const [fixtures,teachers,slots]=await Promise.all(['fixtures','teachers','slots'].map(all));const date=$('#fixtureDate')?.value||new Date().toISOString().slice(0,10);downloadFixtureReport(date,fixtures,teachers,slots);}
  else if(a==='backup')await backup();
  else if(a==='reset')await resetAll();
  else if(a==='print-class')await printTimetables('class');
