@@ -367,7 +367,7 @@ async function printTimetables(kind){
  if(!pages.length){toast('No timetable records found');return}
  const w=window.open('','_blank');if(!w){toast('Allow pop-ups to print the PDF');return}
  w.document.open();
- w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>TimeCraft '+kind+' timetable</title><style>
+ w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>TimeCraft '+kind+' timetable</title><style>
 *{box-sizing:border-box}html,body{margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;color:#111;background:#fff}
 .print-page{width:100%;height:210mm;padding:10mm 10mm 9mm;position:relative;page-break-after:always;break-after:page}
 .print-page:last-child{page-break-after:auto;break-after:auto}
