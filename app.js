@@ -178,27 +178,60 @@ async function saveManualAssignment(form){
 }
 
 async function fixturesPage(){
- const [teachers,slots,fixtures,s]=await Promise.all(['teachers','slots','fixtures','settings'].map(x=>x==='settings'?setting():all(x)));
- const days=(s.workingDays||DAYS);const rows=fixtures.slice().reverse().map(f=>'<tr><td>'+esc(f.date)+'</td><td>'+esc(f.day)+'</td><td>'+esc(f.className)+' · P'+f.period+'</td><td>'+esc(f.subjectName)+'</td><td>'+esc(f.absentName)+'</td><td>'+(f.substituteName?'<span class="tag green">'+esc(f.substituteName)+'</span>':'<span class="tag red">Unassigned</span>')+'</td><td>'+esc(f.reason||'—')+'</td><td>'+btn('Delete','delete-fixture-'+f.id,'btn danger small')+'</td></tr>').join('');
- return '<div class="welcome"><div><h2>Substitute fixtures</h2><p>Record an absent teacher and allocate available eligible substitutes fairly.</p></div>'+btn('＋ Create fixture','new-fixture','btn')+'</div><div class="notice">The system checks the selected day and period for teacher clashes, subject/class eligibility and weekly workload. If no eligible teacher is free, the period remains unassigned with a reason.</div><div class="panel">'+(fixtures.length?table(['Date','Day','Affected period','Subject','Absent teacher','Substitute','Status / reason',''],rows):empty('No fixtures recorded','Create a fixture when a teacher is absent.'))+'</div>';
+ const [teachers,slots,fixtures,settings]=await Promise.all(['teachers','slots','fixtures','settings'].map(x=>x==='settings'?setting():all(x)));
+ const date=new Date().toISOString().slice(0,10),day=DAYS[(new Date().getDay()+6)%7],daily=fixtures.filter(f=>f.date===date);
+ const rows=fixtures.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(a.period||0)-(b.period||0)).map(f=>'<tr><td>'+esc(f.date)+'</td><td>'+esc(f.day)+'</td><td>'+esc(f.className)+' · '+esc(f.periodName||('P'+f.period))+'</td><td>'+esc(f.subjectName)+'</td><td>'+esc(f.absentName)+'</td><td>'+(f.substituteName?'<span class="tag green">'+esc(f.substituteName)+'</span>':'<span class="tag red">Pending</span>')+'</td><td>'+esc(f.reason||'—')+'</td><td>'+btn('Manual assign','manual-fixture-'+f.id,'btn secondary small')+' '+btn('Delete','delete-fixture-'+f.id,'btn danger small')+'</td></tr>').join('');
+ return '<div class="welcome"><div><h2>Substitute fixtures</h2><p>Mark all absent teachers once, then auto-assign available substitutes.</p></div>'+btn('↓ Download fixture report','fixture-report','btn secondary')+'</div><div class="panel form-card"><h3 class="section-title">Daily absence check & automatic fixtures</h3><div class="field"><label>Date</label><input id="fixtureDate" type="date" value="'+date+'"></div><p class="hint">Select every teacher who is Absent / On Leave for this date. Auto assignment checks the full Monday–Saturday timetable load, then filters teachers who are free in that exact period.</p><div id="absentTeacherList" class="check-grid">'+teachers.map(t=>'<label class="checkline"><input type="checkbox" class="absent-teacher" value="'+t.id+'">'+esc(t.name)+'</label>').join('')+'</div><div class="form-actions">'+btn('Auto assign fixtures','auto-fixtures','btn')+'</div></div><div class="panel"><div class="panel-head"><div><h3>Fixture report</h3><p>'+fixtures.length+' period records · '+daily.length+' for today</p></div></div>'+(fixtures.length?table(['Date','Day','Class / period','Subject','Absent teacher','Substitute','Status',''],rows):empty('No fixtures recorded','Select absent teachers above and run automatic assignment.'))+'</div>';
 }
-async function createFixture(){
- const [teachers,slots,fixtures]=await Promise.all(['teachers','slots','fixtures'].map(all));if(!teachers.length||!slots.length){toast('Add teachers and generate timetable first');return}
- openModal('<h3>Create substitute fixture</h3><form id="fixtureForm"><div class="field"><label>Date</label><input name="date" type="date" required value="'+new Date().toISOString().slice(0,10)+'"></div><div class="field"><label>Absent teacher</label><select name="teacherId">'+teachers.map(t=>'<option value="'+t.id+'">'+esc(t.name)+'</option>').join('')+'</select></div><div class="field"><label>Working day</label><select name="day">'+DAYS.map(d=>'<option value="'+d+'" '+(d===DAYS[(new Date().getDay()+6)%7]?'selected':'')+'>'+d+'</option>').join('')+'</select></div><div id="fixtureChoices" class="notice">Choose date, absent teacher and day to load lessons.</div><div class="form-actions"><button type="button" class="btn ghost" data-action="close-modal">Cancel</button><button class="btn">Save fixture assignments</button></div></form>');
- const form=$('#fixtureForm'),choices=$('#fixtureChoices');
- async function refreshChoices(){const f=Object.fromEntries(new FormData(form)),absentId=Number(f.teacherId),day=f.day,date=f.date,affected=slots.filter(x=>x.teacherId===absentId&&x.day===day);if(!affected.length){choices.innerHTML='No timetable periods found for this teacher on '+esc(day)+'.';return}
- const load={};teachers.forEach(t=>load[t.id]=slots.filter(x=>x.teacherId===t.id).length+fixtures.filter(x=>x.date===date&&x.substituteId===t.id).length);
- choices.innerHTML='<b>Choose a substitute for each affected period.</b>'+affected.map((lesson,i)=>{const occupied=slots.filter(x=>x.day===day&&x.period===lesson.period&&x.teacherId!==absentId).map(x=>x.teacherId),already=fixtures.filter(x=>x.date===date&&x.period===lesson.period&&x.substituteId).map(x=>x.substituteId),candidates=teachers.filter(t=>t.id!==absentId&&Number(t.maxPeriods??30)>Number(load[t.id]||0)&&eligibleTeacher(t,lesson.subjectName,lesson.className)&&!occupied.includes(t.id)&&!already.includes(t.id));candidates.sort((a,b)=>(load[a.id]||0)-(load[b.id]||0)||a.name.localeCompare(b.name));return '<div class="fixture-choice"><div><b>'+esc(lesson.className)+' · '+esc(lesson.subjectName)+'</b><small>'+esc(lesson.periodName||('P'+lesson.period))+' · '+esc(lesson.start||'')+'–'+esc(lesson.end||'')+'</small></div><label>Substitute<select name="sub-'+i+'"><option value="">Unassigned</option>'+candidates.map((t,j)=>'<option value="'+t.id+'" '+(j===0?'selected':'')+'>'+esc(t.name)+' — '+load[t.id]+' periods</option>').join('')+'</select></label><input type="hidden" name="lesson-'+i+'" value="'+lesson.id+'"></div>'}).join('')+'<p class="hint">Only teachers who are free and eligible for this subject/class are listed. Lowest workload appears first. You can override the automatic choice.</p>';
+async function autoAssignFixtures(){
+ const date=$('#fixtureDate')?.value,absentIds=Array.from(document.querySelectorAll('.absent-teacher:checked')).map(x=>Number(x.value));
+ if(!date||!absentIds.length){toast('Select date and at least one absent teacher');return}
+ const [teachers,slots,fixtures,settings]=await Promise.all(['teachers','slots','fixtures','settings'].map(x=>x==='settings'?setting():all(x)));
+ const day=DAYS[(new Date(date+'T12:00:00').getDay()+6)%7];
+ if(!(settings.workingDays||DAYS).includes(day)){toast(day+' is not a working day in Settings');return}
+ const absentSet=new Set(absentIds),absent=teachers.filter(t=>absentSet.has(t.id));
+ const load=new Map(teachers.map(t=>[t.id,slots.filter(x=>x.teacherId===t.id).length+fixtures.filter(f=>f.substituteId===t.id&&f.date!==date).length]));
+ const dayAssignments=fixtures.filter(f=>f.date===date&&f.substituteId);
+ const alreadyUsedToday=new Set(dayAssignments.map(f=>f.substituteId));
+ const occupied=new Set(slots.filter(x=>x.day===day).map(x=>x.teacherId+'|'+x.period));
+ fixtures.filter(f=>f.date===date&&f.substituteId).forEach(f=>occupied.add(f.substituteId+'|'+f.period));
+ const pending=[];
+ for(const absentTeacher of absent){
+  const lessons=slots.filter(x=>x.teacherId===absentTeacher.id&&x.day===day).sort((a,b)=>a.period-b.period);
+  for(const lesson of lessons){
+   const choices=teachers.filter(t=>t.id!==absentTeacher.id&&!absentSet.has(t.id)&&!alreadyUsedToday.has(t.id)&&Number(t.maxPeriods??30)>Number(load.get(t.id)||0)&&eligibleTeacher(t,lesson.subjectName,lesson.className)&&!occupied.has(t.id+'|'+lesson.period));
+   choices.sort((a,b)=>(load.get(a.id)||0)-(load.get(b.id)||0)||a.name.localeCompare(b.name));
+   const sub=choices[0]||null;
+   if(sub){alreadyUsedToday.add(sub.id);occupied.add(sub.id+'|'+lesson.period);load.set(sub.id,(load.get(sub.id)||0)+1)}
+   pending.push({date,day,absentId:absentTeacher.id,absentName:absentTeacher.name,classId:lesson.classId,className:lesson.className,subjectId:lesson.subjectId,subjectName:lesson.subjectName,period:lesson.period,periodName:lesson.periodName||('P'+lesson.period),start:lesson.start||'',end:lesson.end||'',substituteId:sub?.id||null,substituteName:sub?.name||'',reason:sub?'Auto-assigned (lowest weekly load, free in period; max one auto fixture today)':'No eligible free teacher available'});
+  }
  }
- form.querySelectorAll('[name="date"],[name="teacherId"],[name="day"]').forEach(x=>x.addEventListener('change',refreshChoices));await refreshChoices();
- form.addEventListener('submit',async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(form)),absentId=Number(f.teacherId),day=f.day,date=f.date,affected=slots.filter(x=>x.teacherId===absentId&&x.day===day),load={};teachers.forEach(t=>load[t.id]=slots.filter(x=>x.teacherId===t.id).length+fixtures.filter(x=>x.date===date&&x.substituteId===t.id).length);const used=new Set(),made=[];
- for(let i=0;i<affected.length;i++){const lesson=affected[i],chosen=Number(f['sub-'+i])||0,teacher=teachers.find(t=>t.id===chosen),free=teacher&&teacher.id!==absentId&&eligibleTeacher(teacher,lesson.subjectName,lesson.className)&&Number(teacher.maxPeriods??30)>Number(load[teacher.id]||0)&&!slots.some(x=>x.teacherId===teacher.id&&x.day===day&&x.period===lesson.period)&&!fixtures.some(x=>x.date===date&&x.period===lesson.period&&x.substituteId===teacher.id)&&!used.has(teacher.id+'-'+lesson.period),sub=free?teacher:null;if(sub){used.add(sub.id+'-'+lesson.period);load[sub.id]=(load[sub.id]||0)+1}
- made.push({date,day,absentId,absentName:teachers.find(t=>t.id===absentId)?.name||'',classId:lesson.classId,className:lesson.className,subjectId:lesson.subjectId,subjectName:lesson.subjectName,period:lesson.period,periodName:lesson.periodName||('P'+lesson.period),start:lesson.start||'',end:lesson.end||'',substituteId:sub?.id||null,substituteName:sub?.name||'',reason:sub?'Assigned from free eligible teachers':'No substitute selected or no eligible free teacher available'});
- }
- for(const rec of made)await add('fixtures',rec);$('.modal-backdrop').remove();toast(made.length+' fixture periods saved');render();
- });
+ const tx=db.transaction('fixtures','readwrite'),store=tx.objectStore('fixtures');
+ fixtures.filter(f=>f.date===date&&absentSet.has(f.absentId)).forEach(f=>store.delete(f.id));
+ pending.forEach(f=>store.add(f));
+ await new Promise((res,rej)=>{tx.oncomplete=res;tx.onerror=()=>rej(tx.error)});
+ toast(pending.filter(x=>x.substituteId).length+' auto fixtures assigned; '+pending.filter(x=>!x.substituteId).length+' need manual action');render();
 }
-
+async function manualFixture(id){
+ const [teachers,slots,fixtures]=await Promise.all(['teachers','slots','fixtures'].map(all)),f=fixtures.find(x=>x.id===Number(id));if(!f)return;
+ const load=t=>slots.filter(x=>x.teacherId===t.id).length+fixtures.filter(x=>x.substituteId===t.id&&x.date!==f.date).length+fixtures.filter(x=>x.substituteId===t.id&&x.date===f.date).length;
+ const occupied=slots.filter(x=>x.day===f.day&&x.period===f.period).map(x=>x.teacherId).filter(x=>x!==f.absentId).concat(fixtures.filter(x=>x.date===f.date&&x.period===f.period&&x.substituteId&&x.id!==f.id).map(x=>x.substituteId));
+ const candidates=teachers.filter(t=>t.id!==f.absentId&&eligibleTeacher(t,f.subjectName,f.className)&&!occupied.includes(t.id)&&Number(t.maxPeriods??30)>load(t)).sort((a,b)=>load(a)-load(b)||a.name.localeCompare(b.name));
+ openModal('<h3>Manual fixture assignment</h3><p class="hint">'+esc(f.date)+' · '+esc(f.day)+' · '+esc(f.className)+' · '+esc(f.subjectName)+' · '+esc(f.periodName||('P'+f.period))+'</p><p>Only eligible teachers free in this period are listed. Lowest weekly load appears first. Manual assignment can give a teacher a second fixture on the same day if there is no period clash.</p><form id="manualFixtureForm"><div class="field"><label>Substitute teacher</label><select name="substituteId" required><option value="">Choose free teacher</option>'+candidates.map(t=>'<option value="'+t.id+'">'+esc(t.name)+' — '+load(t)+' weekly load</option>').join('')+'</select></div><div class="form-actions"><button type="button" class="btn ghost" data-action="close-modal">Cancel</button><button class="btn" '+(!candidates.length?'disabled':'')+'>Assign manually</button></div></form>');
+ $('#manualFixtureForm').addEventListener('submit',async e=>{e.preventDefault();const id2=Number(new FormData(e.target).get('substituteId')),sub=candidates.find(t=>t.id===id2);if(!sub) return;const latest=(await all('fixtures')).find(x=>x.id===f.id);if(!latest)return;await put('fixtures',{...latest,substituteId:sub.id,substituteName:sub.name,reason:'Manually assigned'});$('.modal-backdrop')?.remove();toast('Manual fixture assigned');render()});
+}
+function downloadFixtureReport(records){
+ const clean=v=>String(v??'').replace(/[^\x20-\x7E]/g,'?').replace(/[()\\]/g,'\\$&');
+ const lines=['TIMECRAFT - SUBSTITUTE FIXTURE REPORT','Generated: '+new Date().toLocaleString(),'Total fixture periods: '+records.length,'','DATE | DAY | CLASS | PERIOD | SUBJECT | ABSENT | SUBSTITUTE | STATUS'];
+ records.slice().sort((a,b)=>(a.date||'').localeCompare(b.date||'')||(a.period||0)-(b.period||0)).forEach(f=>lines.push([f.date,f.day,f.className,f.periodName||('P'+f.period),f.subjectName,f.absentName,f.substituteName||'UNASSIGNED',f.reason||''].join(' | ')));
+ const pages=[];for(let i=0;i<lines.length;i+=42)pages.push(lines.slice(i,i+42));
+ const objs=[],add=o=>{objs.push(o);return objs.length};
+ const font=add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'),pageIds=[];
+ pages.forEach(linesPage=>{const stream='BT /F1 9 Tf 40 800 Td 12 TL '+linesPage.map((l,i)=>(i?'T* ':'')+'('+clean(l).slice(0,150)+') Tj').join(' ')+' ET',content=add('<< /Length '+stream.length+' >>\\nstream\\n'+stream+'\\nendstream'),page=add('<< /Type /Page /Parent PAGES 0 R /MediaBox [0 0 842 595] /Resources << /Font << /F1 '+font+' 0 R >> >> /Contents '+content+' 0 R >>');pageIds.push(page)});
+ const pagesId=add('<< /Type /Pages /Kids ['+pageIds.map(x=>x+' 0 R').join(' ')+'] /Count '+pageIds.length+' >>');
+ pageIds.forEach(id=>objs[id-1]=objs[id-1].replace('PAGES',String(pagesId)));
+ const catalog=add('<< /Type /Catalog /Pages '+pagesId+' 0 R >>');let pdf='%PDF-1.4\\n',offsets=[0];objs.forEach((o,i)=>{offsets.push(pdf.length);pdf+=(i+1)+' 0 obj\\n'+o+'\\nendobj\\n'});const xref=pdf.length;pdf+='xref\\n0 '+(objs.length+1)+'\\n0000000000 65535 f \\n'+offsets.slice(1).map(n=>String(n).padStart(10,'0')+' 00000 n \\n').join('')+'trailer\\n<< /Size '+(objs.length+1)+' /Root '+catalog+' 0 R >>\\nstartxref\\n'+xref+'\\n%%EOF';const blob=new Blob([pdf],{type:'application/pdf'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='TimeCraft-Fixture-Report-'+new Date().toISOString().slice(0,10)+'.pdf';a.click();setTimeout(()=>URL.revokeObjectURL(url),1500);toast('Offline PDF report downloaded');
+}
 async function printTimetables(kind){
  const [classes,teachers,slots,s]=await Promise.all(['classes','teachers','slots','settings'].map(x=>x==='settings'?setting():all(x)));
  if(!slots.length){toast('Generate a timetable before printing');return}
@@ -232,6 +265,9 @@ document.addEventListener('click',async e=>{const b=e.target.closest('[data-acti
  else if(a==='remove-period'){const row=b.closest('.period-row'),list=b.closest('.period-list');if(list.querySelectorAll('.period-row').length<=1){toast('At least one period is required in each section');return}row.remove()}
  else if(a==='generate')await generateTimetable();
  else if(a==='new-fixture')await createFixture();
+ else if(a==='auto-fixtures')await autoAssignFixtures();
+ else if(a.startsWith('manual-fixture-'))await manualFixture(a.slice(15));
+ else if(a==='fixture-report')downloadFixtureReport(await all('fixtures'));
  else if(a==='backup')await backup();
  else if(a==='reset')await resetAll();
  else if(a==='print-class')await printTimetables('class');
