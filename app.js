@@ -190,7 +190,8 @@ async function autoAssignFixtures(){
  const day=DAYS[(new Date(date+'T12:00:00').getDay()+6)%7];
  if(!(settings.workingDays||DAYS).includes(day)){toast(day+' is not a working day in Settings');return}
  const absentSet=new Set(absentIds),absent=teachers.filter(t=>absentSet.has(t.id));
- const load=new Map(teachers.map(t=>[t.id,slots.filter(x=>x.teacherId===t.id).length+fixtures.filter(f=>f.substituteId===t.id&&f.date!==date).length]));
+ const weekStart=new Date(date+'T12:00:00');weekStart.setDate(weekStart.getDate()-((weekStart.getDay()+6)%7));const weekEnd=new Date(weekStart);weekEnd.setDate(weekEnd.getDate()+6);const weekKey=d=>{const z=new Date(d+'T12:00:00');return z>=weekStart&&z<=weekEnd};
+ const load=new Map(teachers.map(t=>[t.id,slots.filter(x=>x.teacherId===t.id).length+fixtures.filter(f=>f.substituteId===t.id&&weekKey(f.date)&&(f.date!==date||f.assignmentSource==='manual')).length]));
  const dayAssignments=fixtures.filter(f=>f.date===date&&f.substituteId&&!absentSet.has(f.absentId));
  const alreadyUsedToday=new Set(dayAssignments.map(f=>f.substituteId));
  const occupied=new Set(slots.filter(x=>x.day===day).map(x=>x.teacherId+'|'+x.period));
@@ -214,7 +215,7 @@ async function autoAssignFixtures(){
 }
 async function manualFixture(id){
  const [teachers,slots,fixtures]=await Promise.all(['teachers','slots','fixtures'].map(all)),f=fixtures.find(x=>x.id===Number(id));if(!f)return;
- const load=t=>slots.filter(x=>x.teacherId===t.id).length+fixtures.filter(x=>x.substituteId===t.id&&x.date!==f.date).length+fixtures.filter(x=>x.substituteId===t.id&&x.date===f.date).length;
+ const weekStart=new Date(f.date+'T12:00:00');weekStart.setDate(weekStart.getDate()-((weekStart.getDay()+6)%7));const weekEnd=new Date(weekStart);weekEnd.setDate(weekEnd.getDate()+6);const inWeek=d=>{const z=new Date(d+'T12:00:00');return z>=weekStart&&z<=weekEnd};const load=t=>slots.filter(x=>x.teacherId===t.id).length+fixtures.filter(x=>x.id!==f.id&&x.substituteId===t.id&&inWeek(x.date)).length;
  const occupied=slots.filter(x=>x.day===f.day&&x.period===f.period).map(x=>x.teacherId).filter(x=>x!==f.absentId).concat(fixtures.filter(x=>x.date===f.date&&x.period===f.period&&x.substituteId&&x.id!==f.id).map(x=>x.substituteId));
  const candidates=teachers.filter(t=>t.id!==f.absentId&&eligibleTeacher(t,f.subjectName,f.className)&&!occupied.includes(t.id)&&Number(t.maxPeriods??30)>load(t)).sort((a,b)=>load(a)-load(b)||a.name.localeCompare(b.name));
  openModal('<h3>Manual fixture assignment</h3><p class="hint">'+esc(f.date)+' · '+esc(f.day)+' · '+esc(f.className)+' · '+esc(f.subjectName)+' · '+esc(f.periodName||('P'+f.period))+'</p><p>Only eligible teachers free in this period are listed. Lowest weekly load appears first. Manual assignment can give a teacher a second fixture on the same day if there is no period clash.</p><form id="manualFixtureForm"><div class="field"><label>Substitute teacher</label><select name="substituteId" required><option value="">Choose free teacher</option>'+candidates.map(t=>'<option value="'+t.id+'">'+esc(t.name)+' — '+load(t)+' weekly load</option>').join('')+'</select></div><div class="form-actions"><button type="button" class="btn ghost" data-action="close-modal">Cancel</button><button class="btn" '+(!candidates.length?'disabled':'')+'>Assign manually</button></div></form>');
@@ -224,7 +225,8 @@ async function downloadFixtureReport(date,records,teachers,slots,settings){
  const day=DAYS[(new Date(date+'T12:00:00').getDay()+6)%7],rows=records.filter(f=>f.date===date).sort((a,b)=>(a.period||0)-(b.period||0));
  const schedule=scheduleForDay(settings||defaults,day),periods=[...(schedule.beforeBreak||[]),...(schedule.afterBreak||[])];
  const periodText=f=>{const p=periods[(Number(f.period)||1)-1];return (f.periodName||p?.name||('P'+f.period))+(p?' ('+p.start+'-'+p.end+')':'')};
- const workloadFor=id=>slots.filter(v=>v.teacherId===id).length+rows.filter(v=>v.substituteId===id).length;
+ const weekStart=new Date(date+'T12:00:00');weekStart.setDate(weekStart.getDate()-((weekStart.getDay()+6)%7));const weekEnd=new Date(weekStart);weekEnd.setDate(weekEnd.getDate()+6);const inSelectedWeek=d=>{const z=new Date(d+'T12:00:00');return z>=weekStart&&z<=weekEnd};
+ const workloadFor=id=>slots.filter(v=>v.teacherId===id).length+records.filter(v=>v.substituteId===id&&inSelectedWeek(v.date)).length;
  const assigned=rows.filter(f=>f.substituteId),pending=rows.filter(f=>!f.substituteId);
  const uniqueAbsent=new Set(rows.map(f=>f.absentTeacherId||f.absentName).filter(Boolean)).size,uniqueSub=new Set(assigned.map(f=>f.substituteId)).size;
  const safe=v=>String(v??'').replace(/[^\x20-\x7E]/g,'?').replace(/[()\\]/g,'\\$&'),ops=[];
@@ -248,7 +250,7 @@ async function downloadFixtureReport(date,records,teachers,slots,settings){
  // Day and date line, aligned with report body.
  rect(22,489,798,28,'1 1 1');
  txt(29,499,11,'DAY:','F2','0.02 0.04 0.08');txt(70,499,11,day.toUpperCase(),'F2','0.02 0.04 0.08');
- right(813,499,11,'DATE: '+date.toUpperCase(),'F2','0.02 0.04 0.08');
+ const dateDisplay=date.split('-').reverse().join('-');right(813,499,11,'DATE: '+dateDisplay,'F2','0.02 0.04 0.08');
  // Ribbon heading.
  line(52,466,224,466,'0.05 0.20 0.38',2.2);line(618,466,790,466,'0.05 0.20 0.38',2.2);
  rect(235,450,372,32,'0.035 0.22 0.43','0.72 0.55 0.22',.8);
