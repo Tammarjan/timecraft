@@ -342,20 +342,54 @@ async function downloadFixtureReport(date,records,teachers,slots,settings){
 async function printTimetables(kind){
  const [classes,teachers,slots,s]=await Promise.all(['classes','teachers','slots','settings'].map(x=>x==='settings'?setting():all(x)));
  if(!slots.length){toast('Generate a timetable before printing');return}
- const days=(s.workingDays||DAYS).filter(d=>DAYS.includes(d)),schedules=days.map(day=>({day,schedule:scheduleForDay(s,day)})),maxBefore=Math.max(0,...schedules.map(x=>(x.schedule.beforeBreak||[]).length)),maxAfter=Math.max(0,...schedules.map(x=>(x.schedule.afterBreak||[]).length));
+ const days=(s.workingDays||DAYS).filter(d=>DAYS.includes(d)),schedules=days.map(day=>({day,schedule:scheduleForDay(s,day)}));
+ const maxBefore=Math.max(0,...schedules.map(x=>(x.schedule.beforeBreak||[]).length)),maxAfter=Math.max(0,...schedules.map(x=>(x.schedule.afterBreak||[]).length));
  const people=kind==='class'?classes:teachers;
  const pages=people.map(person=>{
-  const relevant=kind==='class'?slots.filter(x=>x.classId===person.id):slots.filter(x=>(x.teacherIds||[x.teacherId]).includes(person.id));if(!relevant.length)return '';
+  const relevant=kind==='class'?slots.filter(x=>x.classId===person.id):slots.filter(x=>(x.teacherIds||[x.teacherId]).some(id=>String(id)===String(person.id)));
+  if(!relevant.length)return '';
   const header=kind==='class'?'Class - '+person.name:'Teacher '+person.name;
-  const th='<tr><th>Day</th>'+Array.from({length:maxBefore},(_,i)=>'<th>P'+(i+1)+'</th>').join('')+'<th class="break-head">Break</th>'+Array.from({length:maxAfter},(_,i)=>'<th>P'+(maxBefore+i+1)+'</th>').join('')+'</tr>';
-  const body=schedules.map(({day,schedule})=>{const before=schedule.beforeBreak||[],after=schedule.afterBreak||[],cell=(period,pi)=>{const x=relevant.find(z=>z.day===day&&z.period===period+1);const time=pi?'<small>'+esc(pi.name)+' '+esc(pi.start)+'–'+esc(pi.end)+'</small>':'';if(!x)return '<td>'+time+'</td>';return kind==='class'?'<td>'+time+'<b>'+esc(x.subjectName)+'</b><small>'+esc(x.teacherName)+'</small></td>':'<td>'+time+'<small>Class - '+esc(x.className)+'</small><b>'+esc(x.subjectName)+'</b></td>'};
-   return '<tr><th>'+day+'</th>'+Array.from({length:maxBefore},(_,i)=>before[i]?cell(i,before[i]):'<td class="not-scheduled">—</td>').join('')+'<td class="break-cell">'+(schedule.breakEnabled===false?'':'<span>Break<br>'+esc(schedule.breakStart)+'–'+esc(schedule.breakEnd)+'</span>')+'</td>'+Array.from({length:maxAfter},(_,i)=>after[i]?cell(before.length+i,after[i]):'<td class="not-scheduled">—</td>').join('')+'</tr>';
+  const periodHeaders=(items,offset)=>items.map((p,i)=>'<th><b>'+esc(p.name||('P'+(offset+i+1)))+'</b><small>'+esc(p.start)+'–'+esc(p.end)+'</small></th>').join('');
+  const th='<tr><th class="day-head">Day</th>'+periodHeaders(schedules[0]?.schedule.beforeBreak||[],0)+'<th class="break-head">Break</th>'+periodHeaders(schedules[0]?.schedule.afterBreak||[],maxBefore)+'</tr>';
+  const body=schedules.map(({day,schedule})=>{
+   const before=schedule.beforeBreak||[],after=schedule.afterBreak||[];
+   const cell=period=>{
+    const x=relevant.find(z=>z.day===day&&z.period===period+1);
+    if(!x)return '<td class="lesson-cell"></td>';
+    return kind==='class'
+      ?'<td class="lesson-cell"><b>'+esc(x.subjectName)+'</b><small>'+esc(x.teacherName)+'</small></td>'
+      :'<td class="lesson-cell"><small>Class - '+esc(x.className)+'</small><b>'+esc(x.subjectName)+'</b></td>';
+   };
+   return '<tr><th class="day-name">'+esc(day)+'</th>'+Array.from({length:maxBefore},(_,i)=>before[i]?cell(i):'<td class="lesson-cell"></td>').join('')+'<td class="break-cell">'+(schedule.breakEnabled===false?'':'<span>Break<br>'+esc(schedule.breakStart)+'–'+esc(schedule.breakEnd)+'</span>')+'</td>'+Array.from({length:maxAfter},(_,i)=>after[i]?cell(before.length+i):'<td class="lesson-cell"></td>').join('')+'</tr>';
   }).join('');
-  return '<section class="print-page"><h1>'+esc(header)+'</h1>'+(kind==='class'?'<div class="class-label">HC.Class - '+esc(person.name)+'</div>':'')+'<table class="print-table">'+th+body+'</table><div class="print-footer"><span>Timetable generated: '+new Date().toLocaleDateString('en-GB')+'</span><i>TimeCraft</i></div></section>';
+  return '<section class="print-page"><h1>'+esc(header)+'</h1><table class="print-table">'+th+body+'</table><div class="print-footer"><span>Timetable generated: '+new Date().toLocaleDateString('en-GB')+'</span><i>TimeCraft</i></div></section>';
  }).filter(Boolean);
  if(!pages.length){toast('No timetable records found');return}
  const w=window.open('','_blank');if(!w){toast('Allow pop-ups to print the PDF');return}
- w.document.open();w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>TimeCraft '+kind+' timetable</title><style>*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;color:#111}.print-page{width:100%;height:100vh;padding:9mm 10mm 8mm;position:relative;page-break-after:always;break-after:page}.print-page:last-child{page-break-after:auto;break-after:auto}h1{text-align:center;font-size:25pt;margin:0 0 13mm;font-weight:700}.class-label{position:absolute;right:10mm;top:11mm;font-size:10pt}.print-table{border-collapse:collapse;width:100%;table-layout:fixed}.print-table th,.print-table td{border:1px solid #222;text-align:center;vertical-align:middle;padding:3px 2px}.print-table th{font-size:9pt}.print-table tbody td{height:65px;font-size:9pt}.print-table td b{display:block;font-size:9pt}.print-table td small{display:block;font-size:7pt;margin-top:3px}.print-table .break-head{width:5%;font-size:8pt}.print-table .break-cell{width:5%;padding:0}.break-cell span{writing-mode:vertical-rl;transform:rotate(180deg);font-size:8pt}.print-footer{position:absolute;bottom:5mm;left:10mm;right:10mm;display:flex;justify-content:space-between;font-size:7.5pt}.print-footer i{font-style:italic}@page{size:A4 landscape;margin:0}@media print{.print-page{height:210mm}}</style></head><body>'+pages.join('')+'</body></html>');w.document.close();w.focus();setTimeout(()=>w.print(),500);
+ w.document.open();
+ w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>TimeCraft '+kind+' timetable</title><style>
+*{box-sizing:border-box}html,body{margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;color:#111;background:#fff}
+.print-page{width:100%;height:210mm;padding:10mm 10mm 9mm;position:relative;page-break-after:always;break-after:page}
+.print-page:last-child{page-break-after:auto;break-after:auto}
+h1{text-align:center;font-size:22pt;line-height:1.15;margin:0 0 10mm;font-weight:700;letter-spacing:.1px}
+.print-table{border-collapse:collapse;width:100%;table-layout:fixed}
+.print-table th,.print-table td{border:1px solid #222;text-align:center;vertical-align:middle;padding:2px}
+.print-table thead th{height:12mm;background:#fff;font-size:9pt;font-weight:700}
+.print-table thead th small{display:block;font-size:6.8pt;font-weight:400;margin-top:2px;white-space:nowrap}
+.print-table .day-head{width:12%}
+.print-table .day-name{font-size:8.5pt;font-weight:700;width:12%}
+.print-table tbody td{height:21mm;font-size:9pt}
+.print-table td b{display:block;font-size:9pt;line-height:1.2;font-weight:700}
+.print-table td small{display:block;font-size:7.2pt;line-height:1.2;margin-top:3px;font-weight:400}
+.print-table .break-head{width:5%;font-size:8pt}
+.print-table .break-cell{width:5%;padding:0}
+.break-cell span{display:inline-block;writing-mode:vertical-rl;transform:rotate(180deg);font-size:7.5pt;line-height:1.2}
+.print-footer{position:absolute;bottom:5mm;left:10mm;right:10mm;display:flex;justify-content:space-between;font-size:7.5pt}
+.print-footer i{font-style:italic}
+@page{size:A4 landscape;margin:0}
+@media print{.print-page{height:210mm;break-after:page}.print-page:last-child{break-after:auto}}
+</style></head><body>'+pages.join('')+'</body></html>');
+ w.document.close();w.focus();setTimeout(()=>w.print(),700);
 }
 async function backup(){const data={app:'TimeCraft',version:1,exportedAt:new Date().toISOString(),records:{}};for(const s of stores)data.records[s]=await all(s);const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='timecraft-backup-'+new Date().toISOString().slice(0,10)+'.json';a.click();URL.revokeObjectURL(url);toast('Backup downloaded')}
 async function restore(file){const data=JSON.parse(await file.text());if(data.app!=='TimeCraft'||!data.records)throw new Error('This is not a valid TimeCraft backup');const tx=db.transaction(stores,'readwrite');for(const s of stores){const st=tx.objectStore(s);st.clear();(data.records[s]||[]).forEach(x=>st.put(x))}await new Promise((res,rej)=>{tx.oncomplete=res;tx.onerror=()=>rej(tx.error)});toast('Backup restored');render()}
