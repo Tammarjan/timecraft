@@ -367,7 +367,7 @@ async function printTimetables(kind){
  if(!pages.length){toast('No timetable records found');return}
  const w=window.open('','_blank');if(!w){toast('Allow pop-ups to print the PDF');return}
  w.document.open();
- w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>TimeCraft '+kind+' timetable</title><style>
+ w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>TimeCraft ${kind} timetable</title><style>
 *{box-sizing:border-box}html,body{margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;color:#111;background:#fff}
 .print-page{width:100%;height:210mm;padding:10mm 10mm 9mm;position:relative;page-break-after:always;break-after:page}
 .print-page:last-child{page-break-after:auto;break-after:auto}
@@ -388,7 +388,7 @@ h1{text-align:center;font-size:22pt;line-height:1.15;margin:0 0 10mm;font-weight
 .print-footer i{font-style:italic}
 @page{size:A4 landscape;margin:0}
 @media print{.print-page{height:210mm;break-after:page}.print-page:last-child{break-after:auto}}
-</style></head><body>'+pages.join('')+'</body></html>');
+</style></head><body>${pages.join('')}</body></html>`);
  w.document.close();w.focus();setTimeout(()=>w.print(),700);
 }
 async function backup(){const data={app:'TimeCraft',version:1,exportedAt:new Date().toISOString(),records:{}};for(const s of stores)data.records[s]=await all(s);const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='timecraft-backup-'+new Date().toISOString().slice(0,10)+'.json';a.click();URL.revokeObjectURL(url);toast('Backup downloaded')}
