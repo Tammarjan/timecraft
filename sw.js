@@ -1,4 +1,4 @@
-const CACHE = 'timecraft-shell-v15';
+const CACHE = 'timecraft-shell-v16';
 const ASSETS = ['./', './index.html', './styles.css', './app.js', './manifest.webmanifest', './icon.svg'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS)));
