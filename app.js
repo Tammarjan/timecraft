@@ -220,53 +220,78 @@ async function manualFixture(id){
  openModal('<h3>Manual fixture assignment</h3><p class="hint">'+esc(f.date)+' · '+esc(f.day)+' · '+esc(f.className)+' · '+esc(f.subjectName)+' · '+esc(f.periodName||('P'+f.period))+'</p><p>Only eligible teachers free in this period are listed. Lowest weekly load appears first. Manual assignment can give a teacher a second fixture on the same day if there is no period clash.</p><form id="manualFixtureForm"><div class="field"><label>Substitute teacher</label><select name="substituteId" required><option value="">Choose free teacher</option>'+candidates.map(t=>'<option value="'+t.id+'">'+esc(t.name)+' — '+load(t)+' weekly load</option>').join('')+'</select></div><div class="form-actions"><button type="button" class="btn ghost" data-action="close-modal">Cancel</button><button class="btn" '+(!candidates.length?'disabled':'')+'>Assign manually</button></div></form>');
  $('#manualFixtureForm').addEventListener('submit',async e=>{e.preventDefault();const id2=Number(new FormData(e.target).get('substituteId')),sub=candidates.find(t=>t.id===id2);if(!sub) return;const latest=(await all('fixtures')).find(x=>x.id===f.id);if(!latest)return;await put('fixtures',{...latest,substituteId:sub.id,substituteName:sub.name,reason:'Manually assigned',assignmentSource:'manual'});$('.modal-backdrop')?.remove();toast('Manual fixture assigned');render()});
 }
-async function downloadFixtureReport(date,records,teachers,slots){
+async function downloadFixtureReport(date,records,teachers,slots,settings){
  const day=DAYS[(new Date(date+'T12:00:00').getDay()+6)%7],rows=records.filter(f=>f.date===date).sort((a,b)=>(a.period||0)-(b.period||0));
+ const schedule=scheduleForDay(settings||defaults,day),periods=[...(schedule.beforeBreak||[]),...(schedule.afterBreak||[])];
+ const periodText=f=>{const p=periods[(Number(f.period)||1)-1];return (f.periodName||p?.name||('P'+f.period))+(p?' ('+p.start+'-'+p.end+')':'')};
  const workloadFor=id=>slots.filter(v=>v.teacherId===id).length+rows.filter(v=>v.substituteId===id).length;
+ const assigned=rows.filter(f=>f.substituteId),pending=rows.filter(f=>!f.substituteId);
+ const uniqueAbsent=new Set(rows.map(f=>f.absentTeacherId||f.absentName).filter(Boolean)).size,uniqueSub=new Set(assigned.map(f=>f.substituteId)).size;
  const safe=v=>String(v??'').replace(/[^\x20-\x7E]/g,'?').replace(/[()\\]/g,'\\$&'),ops=[];
- const rect=(x,y,w,h,fill,stroke=null)=>{if(fill)ops.push(fill+' rg');if(stroke)ops.push(stroke+' RG 0.6 w');ops.push(x+' '+y+' '+w+' '+h+' re '+(fill&&stroke?'B':fill?'f':'S'))};
- const txt=(x,y,size,value,font='F1',color='0 0 0')=>ops.push(color+' rg BT /'+font+' '+size+' Tf '+x+' '+y+' Td ('+safe(value)+') Tj ET');
- const line=(x,y,X,Y,color='0.78 0.81 0.85',width=0.65)=>ops.push(color+' RG '+width+' w '+x+' '+y+' m '+X+' '+Y+' l S');
- const textWidth=(v,size)=>String(v).length*size*.51;
- const centered=(x,y,w,size,v,font='F1',color='0 0 0')=>txt(x+(w-textWidth(v,size))/2,y,size,v,font,color);
- const right=(x,y,size,v,font='F1',color='0 0 0')=>txt(x-textWidth(v,size),y,size,v,font,color);
- // Premium title band: centered, compact, with the requested white page around it.
- rect(151,535,540,39,'0.035 0.055 0.09');
- rect(151,535,4,39,'0.12 0.55 0.82');
- centered(155,549,532,16,'TEACHER FIXTURE AND SUBSTITUTE REPORT','F3','1 1 1');
- // Metadata aligns exactly with the left and right edges of the title band.
- txt(151,515,9,'DAY: '+day,'F2','0.05 0.07 0.10');
- right(691,515,9,'DATE: '+date,'F2','0.05 0.07 0.10');
- txt(18,484,11,'FIXTURE ASSIGNMENTS','F2','0.04 0.06 0.09');
- rect(18,478,806,2,'0.12 0.55 0.82');
- const cols=[['DAY',55],['PERIOD',48],['CLASS',48],['SUBJECT',76],['ABSENT TEACHER',118],['SUBSTITUTE TEACHER',125],['STATUS',65],['WEEKLY WORKLOAD',75],['TEACHER SIGNATURE',196]];
- const x=18,headH=27,rowH=31,totalW=cols.reduce((n,c)=>n+c[1],0);let y=451,cx=x;
- // Dark table header with white bold labels.
- cols.forEach(([name,w])=>{rect(cx,y,w,headH,'0.055 0.075 0.11');centered(cx,y+10,w,7,name,'F2','1 1 1');cx+=w});
- y-=headH;
+ const rect=(x,y,w,h,fill,stroke=null,lw=.7)=>{if(fill)ops.push(fill+' rg');if(stroke)ops.push(stroke+' RG '+lw+' w');ops.push(x+' '+y+' '+w+' '+h+' re '+(fill&&stroke?'B':fill?'f':'S'))};
+ const line=(x,y,X,Y,color='0.78 0.82 0.88',width=.7)=>ops.push(color+' RG '+width+' w '+x+' '+y+' m '+X+' '+Y+' l S');
+ const txt=(x,y,size,value,font='F1',color='0.04 0.06 0.10')=>ops.push(color+' rg BT /'+font+' '+size+' Tf '+x+' '+y+' Td ('+safe(value)+') Tj ET');
+ const width=(v,z)=>String(v).length*z*.51,center=(x,y,w,z,v,font='F1',color='0.04 0.06 0.10')=>txt(x+(w-width(v,z))/2,y,z,v,font,color);
+ const right=(x,y,z,v,font='F1',color='0.04 0.06 0.10')=>txt(x-width(v,z),y,z,v,font,color);
+ const wrap=(v,max)=>{const words=String(v||'').split(/\s+/),out=[];let cur='';for(const word of words){if((cur+' '+word).trim().length>max&&cur){out.push(cur);cur=word}else cur=(cur+' '+word).trim()}if(cur)out.push(cur);return out};
+ // White paper, rounded-looking double frame and navy/gold school identity.
+ rect(2,2,838,591,'1 1 1','0.02 0.04 0.08',1.5);rect(7,7,828,581,null,'0.72 0.55 0.22',.7);
+ // Header banner with restrained gold corner accents.
+ rect(9,526,824,60,'0.025 0.055 0.105');
+ rect(9,526,7,60,'0.78 0.59 0.22');rect(826,526,7,60,'0.78 0.59 0.22');
+ // Small decorative book/seal medallions.
+ rect(33,542,30,27,'0.08 0.15 0.25','0.82 0.68 0.38',.8);
+ center(33,551,30,10,'TC','F2','0.96 0.88 0.68');
+ rect(779,542,30,27,'0.08 0.15 0.25','0.82 0.68 0.38',.8);
+ center(779,551,30,10,'TC','F2','0.96 0.88 0.68');
+ center(65,548,712,22,'TEACHER FIXTURE AND SUBSTITUTE REPORT','F3','1 1 1');
+ // Day and date line, aligned with report body.
+ rect(22,489,798,28,'1 1 1');
+ txt(29,499,11,'DAY:','F2','0.02 0.04 0.08');txt(70,499,11,day.toUpperCase(),'F2','0.02 0.04 0.08');
+ right(813,499,11,'DATE: '+date.toUpperCase(),'F2','0.02 0.04 0.08');
+ // Ribbon heading.
+ line(52,466,224,466,'0.05 0.20 0.38',2.2);line(618,466,790,466,'0.05 0.20 0.38',2.2);
+ rect(235,450,372,32,'0.035 0.22 0.43','0.72 0.55 0.22',.8);
+ rect(245,454,352,24,'0.05 0.31 0.58');
+ center(245,460,352,15,'FIXTURE ASSIGNMENTS','F3','1 1 1');
+ // Exact image-inspired nine-column table.
+ const cols=[['#',30],['TEACHER NAME',120],['SUBJECT',96],['CLASS',52],['PERIOD (TIME)',104],['FOR (ABSENT TEACHER)',134],['WEEKLY WORKLOAD',88],['STATUS',92],['SIGNATURE',90]];
+ const tx=12,tw=cols.reduce((n,c)=>n+c[1],0),hh=38,rh=30;let y=437,cx=tx;
+ cols.forEach(([name,w])=>{rect(cx,y-hh,w,hh,'0.025 0.09 0.17','0.62 0.68 0.74',.55);const lines=wrap(name,Math.max(5,Math.floor(w/5.2)));lines.slice(0,2).forEach((v,i)=>center(cx,y-hh+22-i*10,w,6.8,v,'F2','1 1 1'));cx+=w});
+ y-=hh;
  if(rows.length){
-  rows.forEach((f,index)=>{
-   cx=x;const values=[day,f.periodName||('P'+f.period),f.className,f.subjectName,f.absentName,f.substituteName||'Unassigned',f.substituteId?'ASSIGNED':'PENDING',f.substituteId?String(workloadFor(f.substituteId)):'—',''];
-   const bg=index%2===0?'0.965 0.975 0.985':'1 1 1';
-   cols.forEach(([name,w],i)=>{
-    rect(cx,y,w,rowH,bg,'0.78 0.82 0.87');
-    const val=String(values[i]??''),font=(i===6||i===7)?'F2':'F1',size=(i===4||i===5)?7.4:8;
-    if(i===6){const assigned=val==='ASSIGNED';rect(cx+6,y+8,w-12,15,assigned?'0.88 0.95 0.91':'0.98 0.92 0.87');centered(cx,y+12,w,6.5,val,'F2',assigned?'0.08 0.40 0.25':'0.58 0.28 0.08')}
-    else if(i===4||i===5)txt(cx+5,y+12,size,val.slice(0,Math.floor((w-10)/(size*.51))),font,'0.12 0.16 0.22');
-    else centered(cx,y+12,w,size,val.slice(0,Math.floor((w-8)/(size*.51))),font,'0.10 0.14 0.20');
+  rows.forEach((f,i)=>{
+   cx=tx;const sub=f.substituteName||'Unassigned',status=f.substituteId?'ASSIGNED':'PENDING';
+   const values=[String(i+1),sub,f.subjectName||'',f.className||'',periodText(f),f.absentName||'',f.substituteId?String(workloadFor(f.substituteId)):'—',status,''];
+   cols.forEach(([name,w],j)=>{
+    rect(cx,y-rh,w,rh,i%2===0?'0.96 0.975 0.99':'1 1 1','0.68 0.73 0.79',.5);
+    if(j===6)rect(cx+1,y-rh+1,w-2,rh-2,'0.84 0.90 0.98');
+    if(j===7){rect(cx+5,y-rh+8,w-10,14,f.substituteId?'0.04 0.48 0.20':'0.70 0.32 0.08');center(cx+5,y-rh+12,w-10,6.4,status,'F2','1 1 1')}
+    else{
+     const max=Math.max(4,Math.floor((w-8)/4.2)),parts=wrap(values[j],max).slice(0,2);
+     parts.forEach((v,k)=>center(cx+2,y-rh+17-k*9,w-4, j===0?9:7.3,v,j===0||j===6?'F2':'F1','0.035 0.06 0.10'));
+    }
     cx+=w;
    });
-   y-=rowH;
+   y-=rh;
   });
  }else{
-  rect(x,y-rowH,totalW,rowH,'0.97 0.98 0.99','0.78 0.82 0.87');
-  centered(x,y-19,totalW,9,'NO FIXTURE ASSIGNMENTS FOR THIS DATE','F2','0.40 0.45 0.52');
-  y-=rowH;
+  rect(tx,y-rh,tw,rh,'0.97 0.98 0.99','0.68 0.73 0.79',.5);center(tx,y-rh+11,tw,9,'NO FIXTURE ASSIGNMENTS FOR THIS DATE','F2','0.35 0.40 0.48');y-=rh;
  }
- // Signature-friendly white space and subtle footer rule.
- line(18,34,824,34,'0.82 0.85 0.89',0.7);
- txt(18,19,7,'OFFICIAL DAILY SUBSTITUTE RECORD','F2','0.43 0.48 0.55');
- right(824,19,7,'Generated by TimeCraft','F2','0.25 0.31 0.39');
+ // Summary and notes panels, matching the reference's two-card lower section.
+ const panelY=66,panelH=119,leftX=16,leftW=310,rightX=350,rightW=476;
+ rect(leftX,panelY,leftW,panelH,'0.99 0.995 1','0.10 0.15 0.22',.8);rect(leftX,panelY+panelH-27,leftW,27,'0.025 0.09 0.17');
+ txt(leftX+17,panelY+panelH-19,12,'SUMMARY (TODAY)','F2','1 1 1');
+ const summary=[['Total Fixtures Assigned',String(assigned.length)],['Total Pending',String(pending.length)],['Absent Teachers',String(uniqueAbsent)],['Assigned Teachers',String(uniqueSub)]];
+ summary.forEach((v,i)=>{const yy=panelY+panelH-48-i*20;if(i%2===0)rect(leftX+9,yy-5,leftW-18,18,'0.88 0.93 0.99');txt(leftX+17,yy,9,v[0],'F2');right(leftX+leftW-22,yy,10,v[1],'F2')});
+ rect(rightX,panelY,rightW,panelH,'0.99 0.995 1','0.10 0.15 0.22',.8);rect(rightX,panelY+panelH-27,rightW,27,'0.025 0.09 0.17');
+ txt(rightX+17,panelY+panelH-19,12,'NOTES','F2','1 1 1');
+ const notes=['Fixtures are auto-assigned by lowest weekly workload and period availability.','Only one fixture is auto-assigned per substitute teacher per day.','Additional fixtures may be assigned manually by Admin/Head.'];
+ notes.forEach((v,i)=>{rect(rightX+17,panelY+panelH-49-i*22,5,5,'0.06 0.12 0.20');txt(rightX+31,panelY+panelH-48-i*22,8,v,'F1','0.08 0.10 0.14')});
+ // Footer bar with bright blue/gold end accents.
+ rect(9,12,824,32,'0.025 0.055 0.105');rect(9,12,80,32,'0.02 0.30 0.70');rect(753,12,80,32,'0.02 0.30 0.70');
+ line(112,28,265,28,'0.86 0.89 0.93',1.1);line(577,28,730,28,'0.86 0.89 0.93',1.1);
+ center(265,23,312,11,'GENERATED BY TIMECRAFT','F2','1 1 1');
  const stream=ops.join('\n'),o=[],add=v=>(o.push(v),o.length);
  const f1=add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
  const f2=add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>');
@@ -274,10 +299,9 @@ async function downloadFixtureReport(date,records,teachers,slots){
  const c=add('<< /Length '+stream.length+' >>\nstream\n'+stream+'\nendstream');
  const p=add('<< /Type /Page /Parent PAGES 0 R /MediaBox [0 0 842 595] /Resources << /Font << /F1 '+f1+' 0 R /F2 '+f2+' 0 R /F3 '+f3+' 0 R >> >> /Contents '+c+' 0 R >>');
  const ps=add('<< /Type /Pages /Kids ['+p+' 0 R] /Count 1 >>');o[p-1]=o[p-1].replace('PAGES',String(ps));
- const cat=add('<< /Type /Catalog /Pages '+ps+' 0 R >>');let pdf='%PDF-1.4\n',offs=[0];
- o.forEach((v,i)=>{offs.push(pdf.length);pdf+=(i+1)+' 0 obj\n'+v+'\nendobj\n'});
+ const cat=add('<< /Type /Catalog /Pages '+ps+' 0 R >>');let pdf='%PDF-1.4\n',offs=[0];o.forEach((v,i)=>{offs.push(pdf.length);pdf+=(i+1)+' 0 obj\n'+v+'\nendobj\n'});
  const xr=pdf.length;pdf+='xref\n0 '+(o.length+1)+'\n0000000000 65535 f \n'+offs.slice(1).map(v=>String(v).padStart(10,'0')+' 00000 n \n').join('')+'trailer\n<< /Size '+(o.length+1)+' /Root '+cat+' 0 R >>\nstartxref\n'+xr+'\n%%EOF';
- const blob=new Blob([pdf],{type:'application/pdf'});if('caches' in window)caches.open('timecraft-fixture-reports-v5').then(v=>v.put(new Request(location.origin+'/timecraft-fixture-report-'+date+'.pdf'),new Response(blob,{headers:{'Content-Type':'application/pdf'}}))).catch(()=>{});
+ const blob=new Blob([pdf],{type:'application/pdf'});if('caches' in window)caches.open('timecraft-fixture-reports-v6').then(v=>v.put(new Request(location.origin+'/timecraft-fixture-report-'+date+'.pdf'),new Response(blob,{headers:{'Content-Type':'application/pdf'}}))).catch(()=>{});
  const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='Teacher-Fixture-Report-'+date+'.pdf';a.click();setTimeout(()=>URL.revokeObjectURL(url),1500);toast('Fixture report downloaded');
 }
 async function printTimetables(kind){
@@ -315,7 +339,7 @@ document.addEventListener('click',async e=>{const b=e.target.closest('[data-acti
  else if(a==='new-fixture')await createFixture();
  else if(a==='auto-fixtures')await autoAssignFixtures();
  else if(a.startsWith('manual-fixture-'))await manualFixture(a.slice(15));
- else if(a==='fixture-report'){const [fixtures,teachers,slots]=await Promise.all(['fixtures','teachers','slots'].map(all));const date=$('#fixtureDate')?.value||new Date().toISOString().slice(0,10);downloadFixtureReport(date,fixtures,teachers,slots);}
+ else if(a==='fixture-report'){const [fixtures,teachers,slots,settings]=await Promise.all([all('fixtures'),all('teachers'),all('slots'),setting()]);const date=$('#fixtureDate')?.value||new Date().toISOString().slice(0,10);downloadFixtureReport(date,fixtures,teachers,slots,settings);}
  else if(a==='backup')await backup();
  else if(a==='reset')await resetAll();
  else if(a==='print-class')await printTimetables('class');
