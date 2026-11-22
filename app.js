@@ -374,7 +374,7 @@ async function printTimetables(kind){
     const sc=scheduleForDay(s,day),pre=sc.beforeBreak||[],post=sc.afterBreak||[],periods=[...pre,...post];
     const periodCell=(p,i)=>{
      const x=relevant.find(z=>z.day===day&&z.period===i+1);
-     return '<div class="mini-period"><b>P'+(i+1)+'</b><i>'+esc(p.start)+'<br>'+esc(p.end)+'</i>'+(x?'<strong>'+esc(x.subjectName)+'</strong><small>'+esc(x.className)+'</small>':'<em>—</em>')+'</div>';
+     return '<div class="mini-period"><b>P'+(i+1)+'</b><i>'+esc(p.start)+'<br>'+esc(p.end)+'</i>'+(x?'<strong>'+esc(x.subjectName)+'</strong><small>'+esc(x.className)+'</small>':'')+'</div>';
     };
     const br='<div class="mini-break"><b>BREAK</b><small>'+esc(sc.breakStart)+'<br>'+esc(sc.breakEnd)+'</small></div>';
     const track=pre.map((p,i)=>periodCell(p,i)).join('')+br+post.map((p,i)=>periodCell(p,pre.length+i)).join('');
