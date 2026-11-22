@@ -62,7 +62,7 @@ async function timetablePage(){
  const [classes,subjects,teachers,slots,s]=await Promise.all(['classes','subjects','teachers','slots','settings'].map(x=>x==='settings'?setting():all(x)));
  const days=(s.workingDays||DAYS).filter(d=>DAYS.includes(d)),selected=classes.find(c=>String(c.id)===String(selectedTimetableClassId))||classes[0],classId=selected?.id||0,visible=slots.filter(x=>x.classId===selected?.id);selectedTimetableClassId=classId;
  const dayPanels=days.map(day=>{const sc=scheduleForDay(s,day),before=sc.beforeBreak||[],after=sc.afterBreak||[],periods=[...before,...after];
- const head=periods.map(p=>'<th>'+esc(p.name)+'<small>'+esc(p.start)+'–'+esc(p.end)+'</small></th>').join('');
+ const headCells=periods.map(p=>'<th>'+esc(p.name)+'<small>'+esc(p.start)+'–'+esc(p.end)+'</small></th>');headCells.splice(before.length,0,'<th class="break-head">Break</th>');const head=headCells.join('');
  const cells=periods.map((p,i)=>{const x=visible.find(z=>z.day===day&&z.period===i+1);return x?'<td><button class="slot" data-action="edit-slot-'+x.id+'">'+esc(x.subjectName)+'<small>'+esc(slotTeacherNames(x,teachers))+'</small></button></td>':'<td><span class="slot empty-slot">—</span></td>'});
  cells.splice(before.length,0,'<td class="break-cell"><span>Break<br>'+esc(sc.breakStart)+'–'+esc(sc.breakEnd)+'</span></td>');
  return '<section class="panel day-timetable"><h3>'+esc(day)+'</h3><div class="schedule-scroll"><table class="schedule day-schedule"><thead><tr>'+head+'</tr></thead><tbody><tr>'+cells.join('')+'</tr></tbody></table></div></section>';
@@ -353,7 +353,7 @@ async function printTimetables(kind){
  const pages=people.map(person=>{const relevant=kind==='class'?slots.filter(x=>x.classId===person.id):slots.filter(x=>slotTeacherIds(x).some(id=>String(id)===String(person.id)));if(!relevant.length)return '';
  const header=kind==='class'?'Class - '+person.name:'Teacher '+person.name;
  const dayTables=days.map(day=>{const sc=scheduleForDay(s,day),before=sc.beforeBreak||[],after=sc.afterBreak||[],periods=[...before,...after];
- const th=periods.map(p=>'<th><b>'+esc(p.name)+'</b><small>'+esc(p.start)+'–'+esc(p.end)+'</small></th>').join('');
+ const thCells=periods.map(p=>'<th><b>'+esc(p.name)+'</b><small>'+esc(p.start)+'–'+esc(p.end)+'</small></th>');thCells.splice(before.length,0,'<th class="break-head">Break</th>');const th=thCells.join('');
  const cells=periods.map((p,i)=>{const x=relevant.find(z=>z.day===day&&z.period===i+1);if(!x)return '<td></td>';return kind==='class'?'<td><b>'+esc(x.subjectName)+'</b><small>'+esc(slotTeacherNames(x,teachers))+'</small></td>':'<td><small>Class - '+esc(x.className)+'</small><b>'+esc(x.subjectName)+'</b></td>'});
  cells.splice(before.length,0,'<td class="break-cell"><span>BREAK<br>'+esc(sc.breakStart)+'–'+esc(sc.breakEnd)+'</span></td>');
  return '<h2>'+esc(day)+'</h2><table class="print-table"><thead><tr>'+th+'</tr></thead><tbody><tr>'+cells.join('')+'</tr></tbody></table>';
