@@ -61,14 +61,30 @@ async function settingsPage(){const s=await setting();const weekday=scheduleForD
 async function timetablePage(){
  const [classes,subjects,teachers,slots,s]=await Promise.all(['classes','subjects','teachers','slots','settings'].map(x=>x==='settings'?setting():all(x)));
  const days=(s.workingDays||DAYS).filter(d=>DAYS.includes(d)),selected=classes.find(c=>String(c.id)===String(selectedTimetableClassId))||classes[0],classId=selected?.id||0,visible=slots.filter(x=>x.classId===selected?.id);selectedTimetableClassId=classId;
- const dayPanels=days.map(day=>{const sc=scheduleForDay(s,day),before=sc.beforeBreak||[],after=sc.afterBreak||[],periods=[...before,...after];
- const headCells=periods.map(p=>'<th>'+esc(p.name)+'<small>'+esc(p.start)+'–'+esc(p.end)+'</small></th>');headCells.splice(before.length,0,'<th class="break-head">Break</th>');const head=headCells.join('');
- const cells=periods.map((p,i)=>{const x=visible.find(z=>z.day===day&&z.period===i+1);return x?'<td><button class="slot" data-action="edit-slot-'+x.id+'">'+esc(x.subjectName)+'<small>'+esc(slotTeacherNames(x,teachers))+'</small></button></td>':'<td><span class="slot empty-slot">—</span></td>'});
- cells.splice(before.length,0,'<td class="break-cell"><span>Break<br>'+esc(sc.breakStart)+'–'+esc(sc.breakEnd)+'</span></td>');
- return '<section class="panel day-timetable"><h3>'+esc(day)+'</h3><div class="schedule-scroll"><table class="schedule day-schedule"><thead><tr>'+head+'</tr></thead><tbody><tr>'+cells.join('')+'</tr></tbody></table></div></section>';
+ if(!selected)return '<div class="welcome"><div><h2>Class Time Table</h2><p>Select or add a class to view its timetable.</p></div></div>'+empty('No classes','Add classes first.');
+ const weekday=scheduleForDay(s,'Monday'),before=weekday.beforeBreak||[],after=weekday.afterBreak||[],weekdayPeriods=[...before,...after];
+ const friday=scheduleForDay(s,'Friday'),fridayPeriods=[...(friday.beforeBreak||[]),...(friday.afterBreak||[])];
+ const periodHeaders=weekdayPeriods.map((p,i)=>'<th><b>Period '+(i+1)+'</b><small>'+esc(p.start)+' – '+esc(p.end)+'</small></th>');
+ periodHeaders.splice(before.length,0,'<th class="approved-break-head">Break<small>'+esc(weekday.breakStart)+' – '+esc(weekday.breakEnd)+'</small></th>');
+ const rows=days.map(day=>{
+  const sc=scheduleForDay(s,day),isFriday=day==='Friday',pre=sc.beforeBreak||[],post=sc.afterBreak||[],periods=[...pre,...post],timeStart=periods[0]?.start||'09:00',off=sc.offTime||'14:00';
+  const timeLabel=(t)=>{const [h,m]=t.split(':').map(Number),ampm=h>=12?'PM':'AM',hh=h%12||12;return String(hh).padStart(2,'0')+':'+String(m).padStart(2,'0')+' '+ampm};
+  const cell=(period,index)=>{const x=visible.find(z=>z.day===day&&z.period===index+1);return x?'<td><button class="approved-slot" data-action="edit-slot-'+x.id+'"><b>'+esc(x.subjectName)+'</b><small>'+esc(slotTeacherNames(x,teachers))+'</small></button></td>':'<td><span class="approved-empty">—</span></td>'};
+  const breakCell='<td class="approved-break-cell"><span>☕<b>Break</b><small>'+esc(sc.breakStart)+' – '+esc(sc.breakEnd)+'</small></span></td>';
+  let dayCells='';
+  if(isFriday){
+   dayCells=pre.map((p,i)=>cell(p,i)).join('')+breakCell+post.map((p,i)=>cell(p,pre.length+i)).join('');
+   if(post.length<3)dayCells+='<td class="approved-off" colspan="'+(3-post.length)+'"><b>OFF</b><small>('+esc(timeStart&&off?timeLabel(off):off)+')</small></td>';
+  }else{
+   dayCells=periods.map((p,i)=>cell(p,i)).join('');
+   dayCells=dayCells.slice(0,0)+periods.slice(0,before.length).map((p,i)=>cell(p,i)).join('')+breakCell+periods.slice(before.length).map((p,i)=>cell(p,before.length+i)).join('');
+  }
+  return '<tr><th class="approved-day">'+esc(day)+'</th><td class="approved-time">'+esc(timeLabel(timeStart))+' – '+esc(timeLabel(off))+'</td>'+dayCells+'</tr>';
  }).join('');
- return '<div class="welcome"><div><h2>Weekly timetable</h2><p>Har din ke periods aur break usi din ki actual timing ke mutabiq.</p></div>'+btn('Generate timetable','generate','btn')+'</div><div class="toolbar"><select id="classFilter">'+classes.map(x=>'<option value="'+x.id+'" '+(x.id===classId?'selected':'')+'>'+esc(x.name)+'</option>').join('')+'</select><span class="spacer"></span>'+btn('Class-wise PDF','print-class','btn secondary')+btn('Teacher-wise PDF','print-teacher','btn secondary')+'</div><div class="notice">Har lesson mein tamam assigned teachers show honge. Edit karte waqt co-teacher assignments bhi preserve hongi.</div>'+(classes.length?dayPanels:empty('No classes','Add classes first.'));
+ const schoolName=esc(s.schoolName||'Government Higher Secondary School');
+ return '<div class="welcome"><div><h2>Class Time Table</h2><p>Approved A4 landscape layout · '+esc(selected.name)+'</p></div>'+btn('Generate timetable','generate','btn')+'</div><div class="toolbar"><select id="classFilter">'+classes.map(x=>'<option value="'+x.id+'" '+(x.id===classId?'selected':'')+'>'+esc(x.name)+'</option>').join('')+'</select><span class="spacer"></span>'+btn('Class-wise PDF','print-class','btn secondary')+btn('Teacher-wise PDF','print-teacher','btn secondary')+'</div><div class="approved-timetable-wrap"><div class="approved-timetable-heading"><div class="approved-emblem">GHSS</div><div><h2>'+schoolName+'</h2><div class="approved-class-title">Class '+esc(selected.name)+' – Time Table</div></div><div class="approved-effective">Effective From:<br><b>21 October 2026</b></div></div><div class="approved-timetable-scroll"><table class="approved-timetable"><thead><tr><th>Day</th><th>Time</th>'+periodHeaders.join('')+'</tr></thead><tbody>'+rows+'</tbody></table></div></div>';
 }
+
 async function generateTimetable(){
  const [classes,subjects,teachers,s,maps]=await Promise.all(['classes','subjects','teachers','settings','teachingAssignments'].map(x=>x==='settings'?setting():all(x)));
  if(!classes.length||!teachers.length||!subjects.length){toast('Add classes, subjects and teachers first');return}
@@ -350,29 +366,62 @@ async function printTimetables(kind){
  const [classes,teachers,slots,s]=await Promise.all(['classes','teachers','slots','settings'].map(x=>x==='settings'?setting():all(x)));
  if(!slots.length){toast('Generate a timetable before printing');return}
  const days=(s.workingDays||DAYS).filter(d=>DAYS.includes(d)),people=kind==='class'?classes:teachers;
- const pages=people.map(person=>{const relevant=kind==='class'?slots.filter(x=>x.classId===person.id):slots.filter(x=>slotTeacherIds(x).some(id=>String(id)===String(person.id)));if(!relevant.length)return '';
- const header=kind==='class'?'Class - '+person.name:'Teacher '+person.name;
- const dayTables=days.map(day=>{const sc=scheduleForDay(s,day),before=sc.beforeBreak||[],after=sc.afterBreak||[],periods=[...before,...after];
- const thCells=periods.map(p=>'<th><b>'+esc(p.name)+'</b><small>'+esc(p.start)+'–'+esc(p.end)+'</small></th>');thCells.splice(before.length,0,'<th class="break-head">Break</th>');const th=thCells.join('');
- const cells=periods.map((p,i)=>{const x=relevant.find(z=>z.day===day&&z.period===i+1);if(!x)return '<td></td>';return kind==='class'?'<td><b>'+esc(x.subjectName)+'</b><small>'+esc(slotTeacherNames(x,teachers))+'</small></td>':'<td><small>Class - '+esc(x.className)+'</small><b>'+esc(x.subjectName)+'</b></td>'});
- cells.splice(before.length,0,'<td class="break-cell"><span>BREAK<br>'+esc(sc.breakStart)+'–'+esc(sc.breakEnd)+'</span></td>');
- return '<h2>'+esc(day)+'</h2><table class="print-table"><thead><tr>'+th+'</tr></thead><tbody><tr>'+cells.join('')+'</tr></tbody></table>';
- }).join('');
- return '<section class="print-page"><h1>'+esc(header)+'</h1>'+dayTables+'<div class="print-footer">TimeCraft · '+new Date().toLocaleDateString('en-GB')+'</div></section>';
+ const pages=people.map(person=>{
+  const relevant=kind==='class'?slots.filter(x=>x.classId===person.id):slots.filter(x=>slotTeacherIds(x).some(id=>String(id)===String(person.id)));
+  if(!relevant.length)return '';
+  if(kind==='class'){
+   const weekday=scheduleForDay(s,'Monday'),before=weekday.beforeBreak||[],after=weekday.afterBreak||[],periods=[...before,...after];
+   const headers=periods.map((p,i)=>'<th><b>Period – '+(i+1)+'</b><small>'+esc(p.start)+' – '+esc(p.end)+'</small></th>');
+   headers.splice(before.length,0,'<th class="break-head"><b>Break</b><small>'+esc(weekday.breakStart)+' – '+esc(weekday.breakEnd)+'</small></th>');
+   const rows=days.map(day=>{
+    const sc=scheduleForDay(s,day),pre=sc.beforeBreak||[],post=sc.afterBreak||[],allPeriods=[...pre,...post],isFriday=day==='Friday';
+    const startTime=allPeriods[0]?.start||'09:00',offTime=sc.offTime||'14:00';
+    const fmt=t=>{const [h,m]=t.split(':').map(Number),ampm=h>=12?'PM':'AM',hh=h%12||12;return String(hh).padStart(2,'0')+':'+String(m).padStart(2,'0')+' '+ampm};
+    const cell=(i)=>{const x=relevant.find(z=>z.day===day&&z.period===i+1);return x?'<td><b>'+esc(x.subjectName)+'</b><small>'+esc(slotTeacherNames(x,teachers))+'</small></td>':'<td class="empty-cell">—</td>'};
+    const br='<td class="break-cell"><span>☕<b>Break</b><small>'+esc(sc.breakStart)+' – '+esc(sc.breakEnd)+'</small></span></td>';
+    let cells='';
+    if(isFriday){
+     cells=pre.map((p,i)=>cell(i)).join('')+br+post.map((p,i)=>cell(pre.length+i)).join('');
+     if(post.length<3)cells+='<td class="off-cell" colspan="'+(3-post.length)+'"><b>OFF</b><small>('+esc(fmt(offTime))+')</small></td>';
+    }else{
+     cells=pre.map((p,i)=>cell(i)).join('')+br+post.map((p,i)=>cell(pre.length+i)).join('');
+    }
+    return '<tr><th class="day-cell">'+esc(day)+'</th><td class="time-cell">'+esc(fmt(startTime))+' – '+esc(fmt(offTime))+'</td>'+cells+'</tr>';
+   }).join('');
+   return '<section class="print-page approved-print-page"><header class="approved-print-header"><div class="approved-print-emblem">GHSS</div><div class="approved-print-school"><h1>'+esc(s.schoolName||'Government Higher Secondary School')+'</h1><div class="approved-print-title">Class '+esc(person.name)+' – Time Table</div></div><div class="approved-print-effective">Effective From:<b>21 October 2026</b></div></header><table class="approved-print-table"><thead><tr><th>Day</th><th>Time</th>'+headers.join('')+'</tr></thead><tbody>'+rows+'</tbody></table></section>';
+  }
+  const header='Teacher '+person.name;
+  const dayTables=days.map(day=>{const sc=scheduleForDay(s,day),before=sc.beforeBreak||[],after=sc.afterBreak||[],periods=[...before,...after];
+   const thCells=periods.map(p=>'<th><b>'+esc(p.name)+'</b><small>'+esc(p.start)+'–'+esc(p.end)+'</small></th>');thCells.splice(before.length,0,'<th class="break-head">Break</th>');
+   const cells=periods.map((p,i)=>{const x=relevant.find(z=>z.day===day&&z.period===i+1);if(!x)return '<td></td>';return '<td><small>Class - '+esc(x.className)+'</small><b>'+esc(x.subjectName)+'</b></td>'});
+   cells.splice(before.length,0,'<td class="break-cell"><span>BREAK<br>'+esc(sc.breakStart)+'–'+esc(sc.breakEnd)+'</span></td>');
+   return '<h2>'+esc(day)+'</h2><table class="print-table"><thead><tr>'+thCells.join('')+'</tr></thead><tbody><tr>'+cells.join('')+'</tr></tbody></table>';
+  }).join('');
+  return '<section class="print-page"><h1>'+esc(header)+'</h1>'+dayTables+'<div class="print-footer">TimeCraft · '+new Date().toLocaleDateString('en-GB')+'</div></section>';
  }).filter(Boolean);
  const w=window.open('','_blank');if(!w){toast('Allow pop-ups to print the PDF');return}
  w.document.open();w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>TimeCraft ${kind} timetable</title><style>
 *{box-sizing:border-box}html,body{margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;color:#111;background:#fff}
-.print-page{width:100%;min-height:210mm;padding:8mm 9mm;page-break-after:always;break-after:page}.print-page:last-child{page-break-after:auto;break-after:auto}
-h1{text-align:center;font-size:19pt;margin:0 0 5mm}h2{font-size:9pt;margin:3mm 0 1mm;padding:1.5mm 2mm;background:#eef1f6}
-.print-table{border-collapse:collapse;width:100%;table-layout:fixed;margin-bottom:2mm}.print-table th,.print-table td{border:1px solid #222;text-align:center;vertical-align:middle;padding:2px}
-.print-table thead th{height:10mm;font-size:8pt}.print-table th small{display:block;font-size:6.5pt;font-weight:400;margin-top:2px}
-.print-table tbody td{height:13mm;font-size:8pt}.print-table td b{display:block;font-size:8pt}.print-table td small{display:block;font-size:6.5pt;margin-top:2px}
-.break-cell{width:7%;background:#f5f5f5}.break-cell span{font-size:6.5pt;writing-mode:vertical-rl;transform:rotate(180deg);display:inline-block}.print-footer{font-size:7pt;margin-top:4mm;text-align:right}
+.print-page{width:100%;min-height:210mm;padding:5mm 5mm;page-break-after:always;break-after:page}.print-page:last-child{page-break-after:auto;break-after:auto}
+.approved-print-header{height:28mm;border:1.4px solid #111;border-radius:3mm;display:grid;grid-template-columns:22mm 1fr 42mm;align-items:center;padding:2mm 4mm;margin-bottom:2mm;gap:3mm}
+.approved-print-emblem{width:18mm;height:18mm;border:1.5px solid #111;border-radius:50%;display:flex;align-items:center;justify-content:center;font:bold 11pt Georgia,serif}
+.approved-print-school{text-align:center}.approved-print-school h1{font: bold 23pt Georgia,serif;margin:0 0 2mm;border-bottom:1px solid #777;padding-bottom:1mm}
+.approved-print-title{display:inline-block;background:#e1e1e1;border-radius:9mm;padding:1mm 9mm;font:bold 17pt Georgia,serif}
+.approved-print-effective{text-align:center;border:1px solid #222;border-radius:2mm;padding:2mm;font: bold 9pt Georgia,serif}.approved-print-effective b{display:block;margin-top:1mm}
+.approved-print-table{border-collapse:collapse;width:100%;table-layout:fixed}.approved-print-table th,.approved-print-table td{border:1px solid #111;text-align:center;vertical-align:middle;padding:1mm .6mm}
+.approved-print-table thead th{height:13mm;background:#ededed;font:bold 11pt Georgia,serif}.approved-print-table thead small{display:block;font: bold 8pt Arial;margin-top:1mm}
+.approved-print-table tbody th.day-cell{font:bold 13pt Georgia,serif;background:#f1f1f1;width:10%}
+.approved-print-table .time-cell{font:bold 7.5pt Arial;width:8%}
+.approved-print-table tbody td{height:19mm;font: bold 10pt Georgia,serif}
+.approved-print-table td b{display:block;font:bold 10.5pt Georgia,serif}.approved-print-table td small{display:block;font:9pt Arial,sans-serif;margin-top:1mm;line-height:1.12}
+.approved-print-table .break-cell{background:#e5e5e5}.approved-print-table .break-cell span{display:block;font:bold 9pt Georgia,serif}.approved-print-table .break-cell small{font:7pt Arial}
+.approved-print-table .off-cell{background:#e5e5e5;font:bold 16pt Georgia,serif}.approved-print-table .empty-cell{color:#aaa}
+.print-table{border-collapse:collapse;width:100%;table-layout:fixed;margin-bottom:2mm}.print-table th,.print-table td{border:1px solid #222;text-align:center;vertical-align:middle;padding:2px}.print-table thead th{height:10mm;font-size:8pt}.print-table th small{display:block;font-size:6.5pt;font-weight:400;margin-top:2px}.print-table tbody td{height:13mm;font-size:8pt}.print-table td b{display:block;font-size:8pt}.print-table td small{display:block;font-size:6.5pt;margin-top:2px}.break-cell{width:7%;background:#f5f5f5}.break-cell span{font-size:6.5pt;writing-mode:vertical-rl;transform:rotate(180deg);display:inline-block}
 @page{size:A4 landscape;margin:0}@media print{.print-page{break-after:page}.print-page:last-child{break-after:auto}}
 </style></head><body>${pages.join('')}</body></html>`);
  w.document.close();w.focus();setTimeout(()=>w.print(),700);
 }
+
 async function backup(){const data={app:'TimeCraft',version:1,exportedAt:new Date().toISOString(),records:{}};for(const s of stores)data.records[s]=await all(s);const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='timecraft-backup-'+new Date().toISOString().slice(0,10)+'.json';a.click();URL.revokeObjectURL(url);toast('Backup downloaded')}
 async function restore(file){const data=JSON.parse(await file.text());if(data.app!=='TimeCraft'||!data.records)throw new Error('This is not a valid TimeCraft backup');const tx=db.transaction(stores,'readwrite');for(const s of stores){const st=tx.objectStore(s);st.clear();(data.records[s]||[]).forEach(x=>st.put(x))}await new Promise((res,rej)=>{tx.oncomplete=res;tx.onerror=()=>rej(tx.error)});toast('Backup restored');render()}
 async function resetAll(){if(!confirm('Clear every TimeCraft record on this device? This cannot be undone.'))return;const tx=db.transaction(stores,'readwrite');stores.forEach(s=>tx.objectStore(s).clear());await new Promise((res,rej)=>{tx.oncomplete=res;tx.onerror=()=>rej(tx.error)});toast('Workspace cleared');setView('dashboard')}
