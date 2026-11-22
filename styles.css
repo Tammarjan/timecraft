@@ -41,3 +41,7 @@
 .approved-off small{display:block;font:11px Arial,sans-serif}
 @media(max-width:640px){.approved-timetable-heading{grid-template-columns:44px 1fr;gap:6px}.approved-emblem{width:40px;height:40px;font-size:10px}.approved-effective{grid-column:1/-1}.approved-class-title{font-size:13px;padding:5px 12px}}
 @media print{.approved-timetable-wrap{border:0;padding:0}.approved-timetable-heading{break-inside:avoid}.approved-timetable{min-width:0}.approved-timetable tbody td{height:50px}}
+
+/* Fixture list controls: keep actions usable on narrow installed-app screens. */
+.welcome .toolbar{margin:0;align-self:center}.actions{flex-wrap:wrap;align-items:center}
+@media(max-width:640px){.welcome .toolbar{width:100%;justify-content:flex-start}.welcome{align-items:flex-start}}
