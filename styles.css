@@ -15,3 +15,29 @@
 
 .assignment-pickers{display:grid;grid-template-columns:1fr;gap:6px;min-width:145px}.assignment-pickers select{width:100%;min-width:0}
 @media(min-width:900px){.assignment-pickers{grid-template-columns:1fr 1fr;min-width:240px}}
+
+/* Approved single-page class timetable layout */
+.approved-timetable-wrap{background:#fff;border:1.5px solid #222;border-radius:12px;padding:12px;overflow:hidden;color:#111}
+.approved-timetable-heading{display:grid;grid-template-columns:64px 1fr 150px;align-items:center;gap:10px;text-align:center;border:1px solid #222;border-radius:9px;padding:9px;margin-bottom:8px}
+.approved-emblem{width:54px;height:54px;border:2px solid #222;border-radius:50%;display:grid;place-items:center;font:700 13px Georgia,serif}
+.approved-timetable-heading h2{font:700 clamp(17px,2.3vw,27px) Georgia,serif;margin:0 0 6px;color:#111}
+.approved-class-title{display:inline-block;background:#e5e5e5;border-radius:24px;padding:6px 22px;font:700 16px Georgia,serif}
+.approved-effective{font:700 11px Georgia,serif;border:1px solid #222;border-radius:7px;padding:8px}
+.approved-timetable-scroll{overflow-x:auto}
+.approved-timetable{width:100%;min-width:850px;border-collapse:collapse;table-layout:fixed;font-family:Georgia,serif;color:#111}
+.approved-timetable th,.approved-timetable td{border:1px solid #222;text-align:center;vertical-align:middle;padding:5px 3px}
+.approved-timetable thead th{background:#ededed;font-size:13px}
+.approved-timetable thead th small{display:block;font:700 10px Arial,sans-serif;margin-top:3px;color:#222}
+.approved-timetable tbody th.approved-day{background:#f1f1f1;font-size:14px;width:9%}
+.approved-timetable .approved-time{font:700 10px Arial,sans-serif;width:9%}
+.approved-timetable tbody td{height:66px}
+.approved-slot{display:block;width:100%;height:100%;min-height:54px;border:0;background:transparent;color:#111;padding:3px 1px;font:700 13px Georgia,serif;white-space:normal}
+.approved-slot small{display:block;color:#222;font:11px Arial,sans-serif;margin-top:4px;line-height:1.15}
+.approved-empty{color:#aaa}
+.approved-break-head,.approved-break-cell{background:#e5e5e5}
+.approved-break-cell span{display:flex;flex-direction:column;align-items:center;gap:3px;font:700 12px Georgia,serif}
+.approved-break-cell small{font:10px Arial,sans-serif}
+.approved-off{background:#e5e5e5;font:700 16px Georgia,serif}
+.approved-off small{display:block;font:11px Arial,sans-serif}
+@media(max-width:640px){.approved-timetable-heading{grid-template-columns:44px 1fr;gap:6px}.approved-emblem{width:40px;height:40px;font-size:10px}.approved-effective{grid-column:1/-1}.approved-class-title{font-size:13px;padding:5px 12px}}
+@media print{.approved-timetable-wrap{border:0;padding:0}.approved-timetable-heading{break-inside:avoid}.approved-timetable{min-width:0}.approved-timetable tbody td{height:50px}}
