@@ -38,12 +38,44 @@
       <footer>TimeCraft <span>·</span> Developed by Tammarjan <span>·</span> Tammarjan94@gmail.com</footer>
     </main>
   </div>
+
+  <div class="apk-poster" id="apkPoster" hidden>
+    <div class="apk-poster-card" role="dialog" aria-modal="true" aria-labelledby="apkPosterTitle">
+      <button class="apk-poster-close" id="apkPosterClose" aria-label="Close">×</button>
+      <div class="apk-poster-icon">TC</div>
+      <div class="apk-poster-kicker">ANDROID APP AVAILABLE</div>
+      <h2 id="apkPosterTitle">Get TimeCraft on your phone</h2>
+      <p>Install the Android app for a faster, app-like experience. Your school workspace stays on your device.</p>
+      <a class="apk-poster-download" href="https://github.com/Tammarjan/timecraft/releases/download/v1.0.0/TimeCraft.apk" download="TimeCraft.apk">Download TimeCraft APK <span>↓</span></a>
+      <small>Android · APK · 1.01 MB</small>
+    </div>
+  </div>
+
   <div class="toast" id="toast" role="status"></div>
   <script src="app.js"></script>
   <script>
     if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
       window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).catch(() => {}));
     }
+  </script>
+  <script>
+    (() => {
+      const standalone = window.matchMedia('(display-mode: standalone)').matches ||
+        window.matchMedia('(display-mode: fullscreen)').matches || window.navigator.standalone === true;
+      const androidChrome = /Android/i.test(navigator.userAgent) && /Chrome\//i.test(navigator.userAgent) && !/EdgA|OPR|SamsungBrowser/i.test(navigator.userAgent);
+      const poster = document.getElementById('apkPoster');
+      const close = document.getElementById('apkPosterClose');
+      if (androidChrome && !standalone && !sessionStorage.getItem('timecraft-apk-poster-dismissed')) {
+        poster.hidden = false;
+      }
+      close.addEventListener('click', () => {
+        poster.hidden = true;
+        sessionStorage.setItem('timecraft-apk-poster-dismissed', '1');
+      });
+      poster.addEventListener('click', event => {
+        if (event.target === poster) close.click();
+      });
+    })();
   </script>
 </body>
 </html>
