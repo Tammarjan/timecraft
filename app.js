@@ -74,7 +74,7 @@ async function timetablePage(){
   let dayCells='';
   if(isFriday){
    dayCells=pre.map((p,i)=>cell(p,i)).join('')+breakCell+post.map((p,i)=>cell(p,pre.length+i)).join('');
-   if(post.length<3)dayCells+='<td class="approved-off" colspan="'+(3-post.length)+'"><b>OFF</b><small>('+esc(timeStart&&off?timeLabel(off):off)+')</small></td>';
+   if(post.length<3)dayCells+='<td class="approved-off" colspan="'+(4-post.length)+'"><b>OFF</b><small>('+esc(timeStart&&off?timeLabel(off):off)+')</small></td>';
   }else{
    dayCells=periods.map((p,i)=>cell(p,i)).join('');
    dayCells=dayCells.slice(0,0)+periods.slice(0,before.length).map((p,i)=>cell(p,i)).join('')+breakCell+periods.slice(before.length).map((p,i)=>cell(p,before.length+i)).join('');
@@ -382,7 +382,7 @@ async function printTimetables(kind){
     let cells='';
     if(isFriday){
      cells=pre.map((p,i)=>cell(i)).join('')+br+post.map((p,i)=>cell(pre.length+i)).join('');
-     if(post.length<3)cells+='<td class="off-cell" colspan="'+(3-post.length)+'"><b>OFF</b><small>('+esc(fmt(offTime))+')</small></td>';
+     if(post.length<3)cells+='<td class="off-cell" colspan="'+(4-post.length)+'"><b>OFF</b><small>('+esc(fmt(offTime))+')</small></td>';
     }else{
      cells=pre.map((p,i)=>cell(i)).join('')+br+post.map((p,i)=>cell(pre.length+i)).join('');
     }
