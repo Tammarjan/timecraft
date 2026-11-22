@@ -13,11 +13,17 @@ jobs:
         with:
           node-version: 22
       - name: Check JavaScript syntax
-        run: node --check app.js
-      - name: Check required app files
+        run: node --check app.js && node --check sw.js
+      - name: Check required offline PWA files
         run: |
           test -s index.html
           test -s styles.css
           test -s app.js
           test -s manifest.webmanifest
           test -s sw.js
+          test -s offline.html
+          test -s icon.svg
+          test -s icon-192.png
+          test -s icon-512.png
+          node -e "const m=require('./manifest.webmanifest'); if(m.display!=='standalone'||!m.icons.some(i=>i.sizes==='192x192')||!m.icons.some(i=>i.sizes==='512x512')) process.exit(1)"
+          node -e "const fs=require('fs'); for (const [f,n] of [['icon-192.png',192],['icon-512.png',512]]) { const b=fs.readFileSync(f); if(b.toString('hex',0,8)!=='89504e470d0a1a0a'||b.readUInt32BE(16)!==n||b.readUInt32BE(20)!==n) throw new Error('Invalid '+f); }"
