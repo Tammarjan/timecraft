@@ -14,10 +14,22 @@ function eligibleTeacher(t,subjectName,className){
  const classes=(t.classes||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean);
  return (!subjects.length||subjects.includes(String(subjectName).trim().toLowerCase()))&&(!classes.length||classes.includes(String(className).trim().toLowerCase()));
 }
-function eligibleForFixture(t,lesson){
- // Keep fixture eligibility consistent with the existing auto-assignment rules:
- // teacher must be eligible for both the subject and the class.
- return eligibleTeacher(t,lesson.subjectName,lesson.className);
+function fixtureEligibilityTier(t,lesson){
+ const subjects=(t.subjects||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean);
+ const classes=(t.classes||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean);
+ const subjectMatch=!subjects.length||subjects.includes(String(lesson.subjectName||'').trim().toLowerCase());
+ const classMatch=!classes.length||classes.includes(String(lesson.className||'').trim().toLowerCase());
+ if(subjectMatch&&classMatch)return 0;
+ if(subjectMatch)return 1;
+ if(classMatch)return 2;
+ return 99;
+}
+function eligibleForFixture(t,lesson){return fixtureEligibilityTier(t,lesson)<99}
+function fixtureAssignmentReason(tier){
+ if(tier===0)return 'Subject and class profile match';
+ if(tier===1)return 'Subject specialist from another class';
+ if(tier===2)return 'Emergency class cover — teacher is not listed for this subject';
+ return 'No eligible teacher found';
 }
 function slotCountsForTeacher(slot,teacher){const ids=slot.teacherIds|| (slot.teacherId!=null?[slot.teacherId]:[]);if(ids.length)return ids.some(id=>String(id)===String(teacher.id));return String(slot.teacherName||'').split('/').map(n=>n.trim().toLowerCase()).includes(String(teacher.name||'').trim().toLowerCase())}
 function regularTeacherLoad(slots,teacher){return slots.filter(slot=>slotCountsForTeacher(slot,teacher)).length}
@@ -226,11 +238,58 @@ async function saveManualAssignment(form){
 }
 
 async function fixturesPage(){
+ await resolvePendingFixtures();
  const [teachers,fixtures]=await Promise.all(['teachers','fixtures'].map(all));
  const date=selectedFixtureDate||new Date().toISOString().slice(0,10),daily=fixtures.filter(f=>f.date===date);
- const rows=daily.slice().sort((a,b)=>(a.period||0)-(b.period||0)||(a.className||'').localeCompare(b.className||'')).map(f=>'<tr><td>'+esc(f.day)+'</td><td>'+esc(f.className)+' · '+esc(f.periodName||('P'+f.period))+'</td><td>'+esc(f.subjectName)+'</td><td>'+esc(f.absentName)+'</td><td>'+(f.substituteName?'<span class="tag green">'+esc(f.substituteName)+'</span>':'<span class="tag red">Pending</span>')+'</td><td>'+esc(f.reason||'—')+'</td><td><div class="actions">'+btn(f.substituteId?'Replace':'Assign','replace-fixture-'+f.id,'btn secondary small')+' '+btn('Delete','delete-fixture-'+f.id,'btn danger small')+'</div></td></tr>').join('');
- return '<div class="welcome"><div><h2>Substitute fixtures</h2><p>Selected date ki fixtures manage karein. Absent teachers select karein aur auto-assign ya Replace use karein.</p></div><div class="toolbar">'+btn('↓ Download fixture report','fixture-report','btn secondary')+btn('Clear all fixtures','clear-fixtures','btn danger')+'</div></div><div class="panel form-card"><h3 class="section-title">Daily absence check & automatic fixtures</h3><div class="field"><label>Date</label><input id="fixtureDate" type="date" value="'+date+'"></div><p class="hint">Selected date ke liye absent teachers mark karein. Substitute present, eligible, free aur us din kisi doosri fixture mein already assigned nahi hoga.</p><div id="absentTeacherList" class="check-grid">'+teachers.map(t=>'<label class="checkline"><input type="checkbox" class="absent-teacher" value="'+t.id+'">'+esc(t.name)+'</label>').join('')+'</div><div class="form-actions">'+btn('Auto assign fixtures','auto-fixtures','btn')+'</div></div><div class="panel"><div class="panel-head"><div><h3>Fixture report · '+esc(date)+'</h3><p>'+daily.length+' fixture records · '+daily.filter(f=>f.substituteId).length+' assigned · '+daily.filter(f=>!f.substituteId).length+' pending</p></div></div>'+(daily.length?table(['Day','Class / period','Subject','Absent teacher','Substitute','Status',''],rows):empty('No fixtures for this date','Choose another date or select absent teachers above and run automatic assignment.'))+'</div>';
+ const absentToday=new Set(daily.map(f=>String(f.absentId)).filter(Boolean));
+ const rows=daily.slice().sort((a,b)=>(a.period||0)-(b.period||0)||(a.className||'').localeCompare(b.className||'')).map(f=>{
+  const status=f.substituteId?'<span class="tag green">Assigned</span>':'<span class="tag red">Not assigned</span>';
+  return '<tr><td>'+esc(f.day)+'</td><td>'+esc(f.className)+' · '+esc(f.periodName||('P'+f.period))+'</td><td>'+esc(f.subjectName)+'</td><td>'+esc(f.absentName)+'</td><td>'+(f.substituteName?'<span class="tag green">'+esc(f.substituteName)+'</span>':'<span class="muted">—</span>')+'</td><td><div class="fixture-status">'+status+btn('!','fixture-info-'+f.id,'btn ghost small fixture-info')+'</div></td><td><div class="actions">'+btn(f.substituteId?'Replace':'Assign','replace-fixture-'+f.id,'btn secondary small')+' '+btn('Delete','delete-fixture-'+f.id,'btn danger small')+'</div></td></tr>';
+ }).join('');
+ return '<div class="welcome"><div><h2>Substitute fixtures</h2><p>Selected date ki fixtures manage karein. Absent teachers select karein aur auto-assign ya Replace use karein.</p></div><div class="toolbar">'+btn('↓ Download fixture report','fixture-report','btn secondary')+btn('Clear all fixtures','clear-fixtures','btn danger')+'</div></div><div class="panel form-card"><h3 class="section-title">Daily absence check & automatic fixtures</h3><div class="field"><label>Date</label><input id="fixtureDate" type="date" value="'+date+'"></div><p class="hint">Selected date ke liye absent teachers select karein. Priority: subject + class specialist, subject specialist, phir emergency class cover.</p><div id="absentTeacherList" class="check-grid">'+teachers.map(t=>'<label class="checkline"><input type="checkbox" class="absent-teacher" value="'+t.id+'" '+(absentToday.has(String(t.id))?'checked':'')+'>'+esc(t.name)+'</label>').join('')+'</div><div class="form-actions">'+btn('Auto assign / resolve pending','auto-fixtures','btn')+'</div></div><div class="panel"><div class="panel-head"><div><h3>Fixture report · '+esc(date)+'</h3><p>'+daily.length+' fixture records · '+daily.filter(f=>f.substituteId).length+' assigned · '+daily.filter(f=>!f.substituteId).length+' not assigned</p></div></div>'+(daily.length?table(['Day','Class / period','Subject','Absent teacher','Substitute','Status',''],rows):empty('No fixtures for this date','Choose another date or select absent teachers above and run automatic assignment.'))+'</div>';
 }
+async function resolvePendingFixtures(){
+ const [teachers,slots,fixtures]=await Promise.all(['teachers','slots','fixtures'].map(all));
+ const pending=fixtures.filter(f=>!f.substituteId).sort((a,b)=>String(a.date).localeCompare(String(b.date))||(Number(a.period)||0)-(Number(b.period)||0)||(Number(a.id)||0)-(Number(b.id)||0));
+ if(!pending.length)return;
+ const same=(a,b)=>String(a)===String(b),absentByDate=new Map(),usedByDate=new Map(),addedWeekly=new Map(),updates=[];
+ const weekStartKey=date=>{const d=new Date(date+'T12:00:00');d.setDate(d.getDate()-((d.getDay()+6)%7));return d.toISOString().slice(0,10)};
+ fixtures.forEach(f=>{
+  if(f.absentId!=null){if(!absentByDate.has(f.date))absentByDate.set(f.date,new Set());absentByDate.get(f.date).add(String(f.absentId))}
+  if(f.substituteId!=null){if(!usedByDate.has(f.date))usedByDate.set(f.date,new Set());usedByDate.get(f.date).add(String(f.substituteId))}
+ });
+ for(const f of pending){
+  const absent=absentByDate.get(f.date)||new Set([String(f.absentId)]),used=usedByDate.get(f.date)||new Set();
+  const occupied=new Set(slots.filter(x=>x.day===f.day&&Number(x.period)===Number(f.period)).flatMap(slotTeacherIds).map(String));
+  fixtures.filter(x=>x.date===f.date&&x.id!==f.id&&Number(x.period)===Number(f.period)&&x.substituteId!=null).forEach(x=>occupied.add(String(x.substituteId)));
+  const week=weekStartKey(f.date);
+  const load=t=>regularTeacherLoad(slots,t)+fixtures.filter(x=>x.substituteId!=null&&same(x.substituteId,t.id)&&weekStartKey(x.date)===week).length+(addedWeekly.get(week+'|'+t.id)||0);
+  const candidates=teachers.filter(t=>!absent.has(String(t.id))&&!used.has(String(t.id))&&!occupied.has(String(t.id))&&Number(t.maxPeriods??30)>load(t)&&fixtureEligibilityTier(t,f)<99);
+  candidates.sort((a,b)=>fixtureEligibilityTier(a,f)-fixtureEligibilityTier(b,f)||load(a)-load(b)||a.name.localeCompare(b.name));
+  const sub=candidates[0];if(!sub)continue;
+  const tier=fixtureEligibilityTier(sub,f);
+  updates.push({...f,substituteId:sub.id,substituteName:sub.name,assignmentSource:f.assignmentSource||'auto',assignmentLevel:['subject-class','subject-specialist','emergency-class-cover'][tier],reason:'Auto-resolved: '+fixtureAssignmentReason(tier)});
+  used.add(String(sub.id));usedByDate.set(f.date,used);addedWeekly.set(week+'|'+sub.id,(addedWeekly.get(week+'|'+sub.id)||0)+1);
+ }
+ if(!updates.length)return;
+ const tx=db.transaction('fixtures','readwrite'),store=tx.objectStore('fixtures');updates.forEach(f=>store.put(f));
+ await new Promise((resolve,reject)=>{tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error)});
+ toast(updates.length+' pending fixture(s) resolved');
+}
+async function showFixtureInfo(id){
+ const [teachers,slots,fixtures]=await Promise.all(['teachers','slots','fixtures'].map(all));
+ const f=fixtures.find(x=>String(x.id)===String(id));if(!f)return;
+ const t=teachers.find(x=>String(x.id)===String(f.substituteId)),tier=t?fixtureEligibilityTier(t,f):null;
+ const level=f.assignmentLevel||(['Subject + class specialist','Subject specialist (other class)','Emergency class cover'][tier]||'Not assigned');
+ const weekStart=new Date(f.date+'T12:00:00');weekStart.setDate(weekStart.getDate()-((weekStart.getDay()+6)%7));
+ const weekEnd=new Date(weekStart);weekEnd.setDate(weekEnd.getDate()+6);
+ const inWeek=d=>{const z=new Date(d+'T12:00:00');return z>=weekStart&&z<=weekEnd};
+ const weekly=t?regularTeacherLoad(slots,t)+fixtures.filter(x=>x.substituteId!=null&&String(x.substituteId)===String(t.id)&&inWeek(x.date)).length:0;
+ const detail=(label,value)=>'<div class="fixture-detail"><span>'+label+'</span><b>'+esc(value||'—')+'</b></div>';
+ const reason=f.reason||(!f.substituteId?'No eligible teacher was assigned yet.':'Assigned substitute is recorded.');
+ openModal('<div class="fixture-info-head"><h3>Fixture details</h3><span class="tag '+(f.substituteId?'green':'red')+'">'+(f.substituteId?'Assigned':'Not assigned')+'</span></div><div class="fixture-detail-grid">'+detail('Date / day',f.date+' · '+f.day)+detail('Class / period',f.className+' · '+(f.periodName||('P'+f.period)))+detail('Subject',f.subjectName)+detail('Absent teacher',f.absentName)+detail('Substitute teacher',t?.name||'Not assigned')+detail('Cover type',level)+(t?detail('Teacher subjects',t.subjects||'Not specified')+detail('Teacher classes',t.classes||'Not specified')+detail('Weekly workload',weekly+' / '+(t.maxPeriods??'—')):'')+'</div><div class="notice fixture-detail-reason"><b>Details</b><p>'+esc(reason)+'</p></div><div class="form-actions"><button type="button" class="btn" data-action="close-modal">Close</button></div>');
+}
+
 async function clearAllFixtures(){
  const fixtures=await all('fixtures');
  if(!fixtures.length){toast('There are no fixtures to clear');return}
