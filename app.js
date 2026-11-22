@@ -280,7 +280,7 @@ async function showFixtureInfo(id){
  const [teachers,slots,fixtures]=await Promise.all(['teachers','slots','fixtures'].map(all));
  const f=fixtures.find(x=>String(x.id)===String(id));if(!f)return;
  const t=teachers.find(x=>String(x.id)===String(f.substituteId)),tier=t?fixtureEligibilityTier(t,f):null;
- const level=f.assignmentLevel||(['Subject + class specialist','Subject specialist (other class)','Emergency class cover'][tier]||'Not assigned');
+ const level=({ 'subject-class':'Subject + class specialist','subject-specialist':'Subject specialist (other class)','emergency-class-cover':'Emergency class cover' })[f.assignmentLevel]||(['Subject + class specialist','Subject specialist (other class)','Emergency class cover'][tier]||'Not assigned');
  const weekStart=new Date(f.date+'T12:00:00');weekStart.setDate(weekStart.getDate()-((weekStart.getDay()+6)%7));
  const weekEnd=new Date(weekStart);weekEnd.setDate(weekEnd.getDate()+6);
  const inWeek=d=>{const z=new Date(d+'T12:00:00');return z>=weekStart&&z<=weekEnd};
