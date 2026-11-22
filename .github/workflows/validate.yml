@@ -25,5 +25,5 @@ jobs:
           test -s icon.svg
           test -s icon-192.png
           test -s icon-512.png
-          node -e "const m=require('./manifest.webmanifest'); if(m.display!=='standalone'||!m.icons.some(i=>i.sizes==='192x192')||!m.icons.some(i=>i.sizes==='512x512')) process.exit(1)"
+          node -e "const fs=require('fs'); const m=JSON.parse(fs.readFileSync('manifest.webmanifest','utf8')); if(m.display!=='standalone'||!m.icons.some(i=>i.sizes==='192x192')||!m.icons.some(i=>i.sizes==='512x512')) process.exit(1)"
           node -e "const fs=require('fs'); for (const [f,n] of [['icon-192.png',192],['icon-512.png',512]]) { const b=fs.readFileSync(f); if(b.toString('hex',0,8)!=='89504e470d0a1a0a'||b.readUInt32BE(16)!==n||b.readUInt32BE(20)!==n) throw new Error('Invalid '+f); }"
