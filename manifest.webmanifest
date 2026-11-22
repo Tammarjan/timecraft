@@ -20,25 +20,25 @@
   ],
   "icons": [
     {
-      "src": "icon-192.png",
+      "src": "https://tammarjan.github.io/timecraft/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "icon-512.png",
+      "src": "https://tammarjan.github.io/timecraft/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "icon-512.png",
+      "src": "https://tammarjan.github.io/timecraft/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": "icon.svg",
+      "src": "https://tammarjan.github.io/timecraft/icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"
@@ -58,7 +58,7 @@
       "url": "./?view=timetable",
       "icons": [
         {
-          "src": "icon-192.png",
+          "src": "https://tammarjan.github.io/timecraft/icon-192.png",
           "sizes": "192x192",
           "type": "image/png"
         }
@@ -71,7 +71,7 @@
       "url": "./?view=fixtures",
       "icons": [
         {
-          "src": "icon-192.png",
+          "src": "https://tammarjan.github.io/timecraft/icon-192.png",
           "sizes": "192x192",
           "type": "image/png"
         }
@@ -84,16 +84,11 @@
       "url": "./?view=assignments",
       "icons": [
         {
-          "src": "icon-192.png",
+          "src": "https://tammarjan.github.io/timecraft/icon-192.png",
           "sizes": "192x192",
           "type": "image/png"
         }
       ]
     }
-  ],
-  "file_handlers": [],
-  "protocol_handlers": [],
-  "related_applications": [],
-  "widgets": [],
-  "scope_extensions": []
+  ]
 }
