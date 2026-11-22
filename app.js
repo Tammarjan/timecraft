@@ -366,6 +366,60 @@ async function printTimetables(kind){
  const [classes,teachers,slots,s]=await Promise.all(['classes','teachers','slots','settings'].map(x=>x==='settings'?setting():all(x)));
  if(!slots.length){toast('Generate a timetable before printing');return}
  const days=(s.workingDays||DAYS).filter(d=>DAYS.includes(d)),people=kind==='class'?classes:teachers;
+ if(kind==='teacher'){
+  const activeTeachers=teachers.filter(person=>slots.some(x=>slotTeacherIds(x).some(id=>String(id)===String(person.id))));
+  const cards=activeTeachers.map(person=>{
+   const relevant=slots.filter(x=>slotTeacherIds(x).some(id=>String(id)===String(person.id)));
+   const weekday=scheduleForDay(s,'Monday'),basePeriods=[...(weekday.beforeBreak||[]),...(weekday.afterBreak||[])];
+   const headerPeriods=basePeriods.map((p,i)=>'<th><b>P'+(i+1)+'</b><small>'+esc(p.start)+'<br>'+esc(p.end)+'</small></th>');
+   headerPeriods.splice((weekday.beforeBreak||[]).length,0,'<th class="mini-break-head">Break</th>');
+   const rows=days.map(day=>{
+    const sc=scheduleForDay(s,day),pre=sc.beforeBreak||[],post=sc.afterBreak||[],periods=[...pre,...post];
+    const cell=(i)=>{const x=relevant.find(z=>z.day===day&&z.period===i+1);return x?'<td><b>'+esc(x.subjectName)+'</b><small>'+esc(x.className)+'</small></td>':'<td class="mini-empty">—</td>'};
+    const br='<td class="mini-break"><b>BREAK</b><small>'+esc(sc.breakStart)+'–'+esc(sc.breakEnd)+'</small></td>';
+    const cells=pre.map((p,i)=>cell(i)).join('')+br+post.map((p,i)=>cell(pre.length+i)).join('');
+    return '<tr><th class="mini-day">'+esc(day.slice(0,3))+'</th>'+cells+'</tr>';
+   }).join('');
+   const designation=person.designation||person.role||'Teacher';
+   return '<article class="cnic-card"><header class="cnic-head"><div class="cnic-seal">GHSS</div><div class="cnic-school">'+esc(s.schoolName||'Government Higher Secondary School')+'<b>TEACHER’S TIME TABLE</b></div><div class="cnic-effective">Effective<br><b>21 Oct 2026</b></div></header><div class="cnic-person"><b>'+esc(person.name)+'</b><span>'+esc(designation)+'</span></div><table class="cnic-grid"><thead><tr><th>Day</th>'+headerPeriods.join('')+'</tr></thead><tbody>'+rows+'</tbody></table></article>';
+  });
+  const groups=[];for(let i=0;i<cards.length;i+=9)groups.push(cards.slice(i,i+9));
+  const pages=groups.map(group=>'<section class="cnic-sheet">'+group.join('')+Array(Math.max(0,9-group.length)).fill('<div class="cnic-blank"></div>').join('')+'</section>');
+  const w=window.open('','_blank');if(!w){toast('Allow pop-ups to print the PDF');return}
+  w.document.open();w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Teacher CNIC-size Timetables</title><style>
+*{box-sizing:border-box}html,body{margin:0;padding:0;background:#fff;color:#111;font-family:Arial,Helvetica,sans-serif}
+.cnic-sheet{width:297mm;height:210mm;padding:20mm 16.1mm;display:grid;grid-template-columns:repeat(3,85.6mm);grid-template-rows:repeat(3,54mm);gap:4mm;page-break-after:always;break-after:page;overflow:hidden}
+.cnic-sheet:last-child{page-break-after:auto;break-after:auto}
+.cnic-card{width:85.6mm;height:54mm;border:0.35mm solid #152b49;border-radius:2.2mm;overflow:hidden;background:#fff;display:flex;flex-direction:column;break-inside:avoid}
+.cnic-head{height:9mm;min-height:9mm;background:#12315c;color:#fff;display:grid;grid-template-columns:8mm 1fr 17mm;align-items:center;padding:0 1.2mm;gap:1mm}
+.cnic-seal{width:6.5mm;height:6.5mm;border:.35mm solid #fff;border-radius:50%;display:grid;place-items:center;font:bold 4pt Georgia,serif}
+.cnic-school{text-align:center;font:bold 5.3pt Arial,sans-serif;line-height:1.05;white-space:normal}
+.cnic-school b{display:block;font-size:5.8pt;letter-spacing:.2px;margin-top:.5mm}
+.cnic-effective{text-align:center;font-size:4pt;line-height:1.05;border-left:.2mm solid #fff;padding-left:.8mm}
+.cnic-effective b{display:block;font-size:4.5pt;margin-top:.5mm}
+.cnic-person{height:5mm;min-height:5mm;display:flex;align-items:center;justify-content:space-between;padding:0 1.3mm;background:#eaf1fa;border-bottom:.2mm solid #152b49;gap:1mm}
+.cnic-person b{font:bold 6.2pt Arial,sans-serif;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.cnic-person span{font:4.4pt Arial,sans-serif;white-space:nowrap}
+.cnic-grid{width:100%;height:39mm;border-collapse:collapse;table-layout:fixed}
+.cnic-grid th,.cnic-grid td{border:.18mm solid #333;text-align:center;vertical-align:middle;padding:.25mm .15mm;overflow:hidden}
+.cnic-grid thead th{height:6mm;background:#dce8f7;font:bold 5pt Arial,sans-serif}
+.cnic-grid thead th small{display:block;font:3.35pt Arial,sans-serif;line-height:1.05;margin-top:.3mm}
+.cnic-grid thead th:first-child{width:7mm}
+.cnic-grid thead th.mini-break-head{background:#f6e5bd;width:6mm;font-size:4pt}
+.cnic-grid tbody tr{height:5.5mm}
+.cnic-grid tbody th.mini-day{width:7mm;background:#eaf1fa;font:bold 4.5pt Arial,sans-serif}
+.cnic-grid tbody td{font:bold 4pt Arial,sans-serif;line-height:1.02}
+.cnic-grid tbody td b{display:block;font-size:3.8pt;line-height:1.05;overflow-wrap:anywhere}
+.cnic-grid tbody td small{display:block;font:3.4pt Arial,sans-serif;line-height:1.05;margin-top:.25mm}
+.cnic-grid tbody td.mini-break{background:#f6e5bd;width:6mm}
+.cnic-grid tbody td.mini-break b{font:bold 3.4pt Arial,sans-serif}
+.cnic-grid tbody td.mini-break small{font:2.8pt Arial,sans-serif}
+.cnic-grid tbody td.mini-empty{color:#999;font-size:5pt}
+@page{size:A4 landscape;margin:0}
+@media print{.cnic-sheet{page-break-after:always}.cnic-sheet:last-child{page-break-after:auto}}
+</style></head><body>${pages.join('')}</body></html>`);
+  w.document.close();w.focus();setTimeout(()=>w.print(),700);return;
+ }
  const pages=people.map(person=>{
   const relevant=kind==='class'?slots.filter(x=>x.classId===person.id):slots.filter(x=>slotTeacherIds(x).some(id=>String(id)===String(person.id)));
   if(!relevant.length)return '';
