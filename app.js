@@ -69,7 +69,7 @@ async function timetablePage(){
  const rows=days.map(day=>{
   const sc=scheduleForDay(s,day),isFriday=day==='Friday',pre=sc.beforeBreak||[],post=sc.afterBreak||[],periods=[...pre,...post],timeStart=periods[0]?.start||'09:00',off=sc.offTime||'14:00';
   const timeLabel=(t)=>{const [h,m]=t.split(':').map(Number),ampm=h>=12?'PM':'AM',hh=h%12||12;return String(hh).padStart(2,'0')+':'+String(m).padStart(2,'0')+' '+ampm};
-  const cell=(period,index)=>{const x=visible.find(z=>z.day===day&&z.period===index+1);return x?'<td><button class="approved-slot" data-action="edit-slot-'+x.id+'"><b>'+esc(x.subjectName)+'</b><small>'+esc(slotTeacherNames(x,teachers))+'</small></button></td>':'<td><span class="approved-empty">—</span></td>'};
+  const cell=(period,index)=>{const x=visible.find(z=>z.day===day&&z.period===index+1),time=isFriday?'<small>'+esc(period.start)+' – '+esc(period.end)+'</small>':'';return x?'<td><button class="approved-slot" data-action="edit-slot-'+x.id+'">'+time+'<b>'+esc(x.subjectName)+'</b><small>'+esc(slotTeacherNames(x,teachers))+'</small></button></td>':'<td><span class="approved-empty">—</span></td>'};
   const breakCell='<td class="approved-break-cell"><span>☕<b>Break</b><small>'+esc(sc.breakStart)+' – '+esc(sc.breakEnd)+'</small></span></td>';
   let dayCells='';
   if(isFriday){
@@ -377,7 +377,7 @@ async function printTimetables(kind){
     const sc=scheduleForDay(s,day),pre=sc.beforeBreak||[],post=sc.afterBreak||[],allPeriods=[...pre,...post],isFriday=day==='Friday';
     const startTime=allPeriods[0]?.start||'09:00',offTime=sc.offTime||'14:00';
     const fmt=t=>{const [h,m]=t.split(':').map(Number),ampm=h>=12?'PM':'AM',hh=h%12||12;return String(hh).padStart(2,'0')+':'+String(m).padStart(2,'0')+' '+ampm};
-    const cell=(i)=>{const x=relevant.find(z=>z.day===day&&z.period===i+1);return x?'<td><b>'+esc(x.subjectName)+'</b><small>'+esc(slotTeacherNames(x,teachers))+'</small></td>':'<td class="empty-cell">—</td>'};
+    const cell=(i)=>{const x=relevant.find(z=>z.day===day&&z.period===i+1),p=allPeriods[i],time=isFriday&&p?'<small>'+esc(p.start)+' – '+esc(p.end)+'</small>':'';return x?'<td>'+time+'<b>'+esc(x.subjectName)+'</b><small>'+esc(slotTeacherNames(x,teachers))+'</small></td>':'<td class="empty-cell">—</td>'};
     const br='<td class="break-cell"><span>☕<b>Break</b><small>'+esc(sc.breakStart)+' – '+esc(sc.breakEnd)+'</small></span></td>';
     let cells='';
     if(isFriday){
