@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.tammarjan.timecraft",
+      "sha256_cert_fingerprints": [
+        "A5:AE:E8:3B:2C:2B:06:19:28:1D:D1:C0:8F:E2:D5:32:62:AC:EF:F7:3D:F0:F3:BF:6D:01:F3:78:17:BC:FD:C0"
+      ]
+    }
+  }
+]
