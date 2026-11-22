@@ -14,8 +14,10 @@ function eligibleTeacher(t,subjectName,className){
 }
 function slotCountsForTeacher(slot,teacher){const ids=slot.teacherIds|| (slot.teacherId!=null?[slot.teacherId]:[]);if(ids.length)return ids.some(id=>String(id)===String(teacher.id));return String(slot.teacherName||'').split('/').map(n=>n.trim().toLowerCase()).includes(String(teacher.name||'').trim().toLowerCase())}
 function regularTeacherLoad(slots,teacher){return slots.filter(slot=>slotCountsForTeacher(slot,teacher)).length}
+function slotTeacherIds(slot){const ids=(slot.teacherIds||[]).filter(v=>v!=null);return ids.length?ids:(slot.teacherId!=null?[slot.teacherId]:[])}
+function slotTeacherNames(slot,teachers){const names=slotTeacherIds(slot).map(id=>teachers.find(t=>String(t.id)===String(id))?.name).filter(Boolean);return names.length?names.join(' / '):(slot.teacherName||'Unassigned')}
 const defaultDaySchedule={assemblyStart:'08:30',assemblyEnd:'09:00',breakStart:'11:30',breakEnd:'12:00',offTime:'14:00',beforeBreak:[{name:'P1',start:'09:00',end:'09:40'},{name:'P2',start:'09:40',end:'10:20'},{name:'P3',start:'10:20',end:'10:55'},{name:'P4',start:'10:55',end:'11:30'}],afterBreak:[{name:'P5',start:'12:00',end:'12:40'},{name:'P6',start:'12:40',end:'13:20'},{name:'P7',start:'13:20',end:'14:00'}]};
-const defaultFridaySchedule={assemblyStart:'08:30',assemblyEnd:'09:00',breakStart:'11:30',breakEnd:'12:00',offTime:'12:30',beforeBreak:[{name:'P1',start:'09:00',end:'09:50'},{name:'P2',start:'09:50',end:'10:40'},{name:'P3',start:'10:40',end:'11:30'}],afterBreak:[{name:'P4',start:'12:00',end:'12:15'},{name:'P5',start:'12:15',end:'12:30'}]};
+const defaultFridaySchedule={assemblyStart:'08:30',assemblyEnd:'09:00',breakStart:'11:00',breakEnd:'11:30',offTime:'12:30',beforeBreak:[{name:'P1',start:'09:00',end:'09:45'},{name:'P2',start:'09:45',end:'10:25'},{name:'P3',start:'10:25',end:'11:00'}],afterBreak:[{name:'P4',start:'11:30',end:'12:00'},{name:'P5',start:'12:00',end:'12:30'}]};
 const defaults={schoolName:'My School',workingDays:DAYS,daySchedules:Object.fromEntries(DAYS.map(d=>[d,JSON.parse(JSON.stringify(d==='Friday'?defaultFridaySchedule:defaultDaySchedule))]))};
 function openDB(){return new Promise((resolve,reject)=>{const req=indexedDB.open(DB_NAME,DB_VERSION);req.onupgradeneeded=()=>{const d=req.result;stores.forEach(s=>{if(!d.objectStoreNames.contains(s))d.createObjectStore(s,{keyPath:'id',autoIncrement:true})})};req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error)})}
 function all(store){return new Promise((resolve,reject)=>{const r=db.transaction(store).objectStore(store).getAll();r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)})}
@@ -59,12 +61,14 @@ async function settingsPage(){const s=await setting();const weekday=scheduleForD
 async function timetablePage(){
  const [classes,subjects,teachers,slots,s]=await Promise.all(['classes','subjects','teachers','slots','settings'].map(x=>x==='settings'?setting():all(x)));
  const days=(s.workingDays||DAYS).filter(d=>DAYS.includes(d)),selected=classes.find(c=>String(c.id)===String(selectedTimetableClassId))||classes[0],classId=selected?.id||0,visible=slots.filter(x=>x.classId===selected?.id);selectedTimetableClassId=classId;
- const schedules=days.map(day=>({day,schedule:scheduleForDay(s,day)})),maxBefore=Math.max(0,...schedules.map(x=>(x.schedule.beforeBreak||[]).length)),maxAfter=Math.max(0,...schedules.map(x=>(x.schedule.afterBreak||[]).length));
- const headers='<th>Day</th>'+Array.from({length:maxBefore},(_,i)=>'<th><b>P'+(i+1)+'</b></th>').join('')+'<th class="break-head">Break</th>'+Array.from({length:maxAfter},(_,i)=>'<th><b>P'+(maxBefore+i+1)+'</b></th>').join('');
- const rows=schedules.map(({day,schedule})=>{const before=schedule.beforeBreak||[],after=schedule.afterBreak||[],cell=p=>{const x=visible.find(z=>z.day===day&&z.period===p+1);return x?'<td><button class="slot" data-action="edit-slot-'+x.id+'">'+esc(x.subjectName)+'<small>'+esc(x.teacherName)+'</small></button></td>':'<td><span class="slot empty-slot">—</span></td>'};return '<tr><th>'+day+'</th>'+Array.from({length:maxBefore},(_,i)=>before[i]?'<td><small>'+esc(before[i].name)+'<br>'+esc(before[i].start)+'–'+esc(before[i].end)+'</small>'+cell(i).replace(/^<td>|<\/td>$/g,'')+'</td>':'<td </td>').join('')+'<td class="break-cell">'+(schedule.breakEnabled===false?'':'<span>Break<br>'+esc(schedule.breakStart)+'–'+esc(schedule.breakEnd)+'</span>')+'</td>'+Array.from({length:maxAfter},(_,i)=>after[i]?'<td><small>'+esc(after[i].name)+'<br>'+esc(after[i].start)+'–'+esc(after[i].end)+'</small>'+cell(before.length+i).replace(/^<td>|<\/td>$/g,'')+'</td>':'<td class="not-scheduled">—</td>').join('')+'</tr>'}).join('');
- return '<div class="welcome"><div><h2>Weekly timetable</h2><p>Generate, review and fine-tune your weekly lesson plan.</p></div>'+btn('Generate timetable','generate','btn')+'</div><div class="toolbar"><select id="classFilter">'+classes.map(x=>'<option value="'+x.id+'" '+(x.id===classId?'selected':'')+'>'+esc(x.name)+'</option>').join('')+'</select><span class="spacer"></span>'+btn('Class-wise PDF','print-class','btn secondary')+btn('Teacher-wise PDF','print-teacher','btn secondary')+'</div><div class="notice">Period names and times come from Settings. Friday uses its own schedule. Tap any lesson to edit its subject or teacher.</div><div class="panel">'+(classes.length?'<div class="schedule-scroll"><table class="schedule"><thead><tr>'+headers+'</tr></thead><tbody>'+rows+'</tbody></table></div>':empty('Add classes first','Create at least one class to build its timetable.'))+'</div><p class="hint" style="margin-top:12px">Saved timetable slots: '+slots.length+' · '+teachers.length+' teachers · '+subjects.length+' subject records</p>';
+ const dayPanels=days.map(day=>{const sc=scheduleForDay(s,day),before=sc.beforeBreak||[],after=sc.afterBreak||[],periods=[...before,...after];
+ const head=periods.map(p=>'<th>'+esc(p.name)+'<small>'+esc(p.start)+'–'+esc(p.end)+'</small></th>').join('');
+ const cells=periods.map((p,i)=>{const x=visible.find(z=>z.day===day&&z.period===i+1);return x?'<td><button class="slot" data-action="edit-slot-'+x.id+'">'+esc(x.subjectName)+'<small>'+esc(slotTeacherNames(x,teachers))+'</small></button></td>':'<td><span class="slot empty-slot">—</span></td>'});
+ cells.splice(before.length,0,'<td class="break-cell"><span>Break<br>'+esc(sc.breakStart)+'–'+esc(sc.breakEnd)+'</span></td>');
+ return '<section class="panel day-timetable"><h3>'+esc(day)+'</h3><div class="schedule-scroll"><table class="schedule day-schedule"><thead><tr>'+head+'</tr></thead><tbody><tr>'+cells.join('')+'</tr></tbody></table></div></section>';
+ }).join('');
+ return '<div class="welcome"><div><h2>Weekly timetable</h2><p>Har din ke periods aur break usi din ki actual timing ke mutabiq.</p></div>'+btn('Generate timetable','generate','btn')+'</div><div class="toolbar"><select id="classFilter">'+classes.map(x=>'<option value="'+x.id+'" '+(x.id===classId?'selected':'')+'>'+esc(x.name)+'</option>').join('')+'</select><span class="spacer"></span>'+btn('Class-wise PDF','print-class','btn secondary')+btn('Teacher-wise PDF','print-teacher','btn secondary')+'</div><div class="notice">Har lesson mein tamam assigned teachers show honge. Edit karte waqt co-teacher assignments bhi preserve hongi.</div>'+(classes.length?dayPanels:empty('No classes','Add classes first.'));
 }
-
 async function generateTimetable(){
  const [classes,subjects,teachers,s,maps]=await Promise.all(['classes','subjects','teachers','settings','teachingAssignments'].map(x=>x==='settings'?setting():all(x)));
  if(!classes.length||!teachers.length||!subjects.length){toast('Add classes, subjects and teachers first');return}
@@ -157,15 +161,18 @@ async function generateTimetable(){
 }
 async function editSlot(id){
  const [slots,teachers,subjects,maps]=await Promise.all(['slots','teachers','subjects','teachingAssignments'].map(all)),slot=slots.find(x=>x.id===Number(id));if(!slot)return;
- const subjectOptions=subjects.filter(x=>!x.classId||x.classId===slot.classId),current=subjectOptions.find(x=>x.id===slot.subjectId)||subjectOptions[0];
- const eligibleFor=sid=>{const sub=subjects.find(x=>x.id===Number(sid)),map=maps.find(x=>x.classId===slot.classId&&x.subjectId===Number(sid));return teachers.filter(t=>(!map||map.teacherId===t.id)&&eligibleTeacher(t,sub?.name||slot.subjectName,slot.className)&&!slots.some(x=>x.id!==slot.id&&x.teacherId===t.id&&x.day===slot.day&&x.period===slot.period)&&(slots.filter(x=>x.teacherId===t.id).length-(slot.teacherId===t.id?1:0)<Number(t.maxPeriods??30)||t.id===slot.teacherId))};
+ const subjectOptions=subjects.filter(x=>!x.classId||x.classId===slot.classId),initial=slotTeacherIds(slot).map(String);
+ const eligibleFor=sid=>{const sub=subjects.find(x=>x.id===Number(sid)),map=maps.find(x=>x.classId===slot.classId&&x.subjectId===Number(sid)),allowed=map?(map.teacherIds||[map.teacherId]).filter(Boolean):null;return teachers.filter(t=>(!allowed||allowed.some(v=>String(v)===String(t.id)))&&eligibleTeacher(t,sub?.name||slot.subjectName,slot.className))};
  let eligible=eligibleFor(slot.subjectId);
- openModal('<h3>Edit timetable period</h3><p class="hint">'+esc(slot.day)+' · '+esc(slot.periodName||('Period '+slot.period))+' · '+esc(slot.className)+'</p><form id="slotForm"><div class="field"><label>Subject</label><select name="subjectId">'+subjectOptions.map(x=>'<option value="'+x.id+'" '+(x.id===slot.subjectId?'selected':'')+'>'+esc(x.name)+'</option>').join('')+'</select></div><div class="field"><label>Eligible and free teacher</label><select name="teacherId">'+eligible.map(x=>'<option value="'+x.id+'" '+(x.id===slot.teacherId?'selected':'')+'>'+esc(x.name)+'</option>').join('')+'</select></div><div class="form-actions"><button type="button" class="btn ghost" data-action="close-modal">Cancel</button><button class="btn">Save changes</button></div></form>');
- $('#slotForm [name="subjectId"]').addEventListener('change',e=>{eligible=eligibleFor(e.target.value);$('#slotForm [name="teacherId"]').innerHTML=eligible.map(x=>'<option value="'+x.id+'">'+esc(x.name)+'</option>').join('')});
- $('#slotForm').addEventListener('submit',async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target)),tid=Number(f.teacherId),sid=Number(f.subjectId),teacher=teachers.find(x=>x.id===tid),sub=subjects.find(x=>x.id===sid),clash=slots.find(x=>x.id!==slot.id&&x.day===slot.day&&x.period===slot.period&&(x.teacherId===tid||x.classId===slot.classId));if(clash){toast('Conflict: teacher or class is already booked');return}if(!teacher||!sub||!eligibleTeacher(teacher,sub.name,slot.className)){toast('This teacher is not eligible for the selected subject and class');return}await put('slots',{...slot,teacherId:tid,teacherName:teacher.name,subjectId:sid,subjectName:sub.name});$('.modal-backdrop').remove();toast('Period updated');render()});
+ const checks=()=>eligible.map(t=>'<label class="checkline"><input type="checkbox" name="teacherIds" value="'+t.id+'" '+(initial.includes(String(t.id))?'checked':'')+'>'+esc(t.name)+'</label>').join('');
+ openModal('<h3>Edit timetable period</h3><p class="hint">'+esc(slot.day)+' · '+esc(slot.periodName||('Period '+slot.period))+' · '+esc(slot.className)+'</p><form id="slotForm"><div class="field"><label>Subject</label><select name="subjectId">'+subjectOptions.map(x=>'<option value="'+x.id+'" '+(x.id===slot.subjectId?'selected':'')+'>'+esc(x.name)+'</option>').join('')+'</select></div><div class="field"><label>Assigned teachers (select all that apply)</label><div id="slotTeacherChoices" class="check-grid">'+checks()+'</div></div><div class="form-actions"><button type="button" class="btn ghost" data-action="close-modal">Cancel</button><button class="btn">Save changes</button></div></form>');
+ $('#slotForm [name="subjectId"]').addEventListener('change',e=>{eligible=eligibleFor(e.target.value);initial.splice(0,initial.length);$('#slotTeacherChoices').innerHTML=checks()});
+ $('#slotForm').addEventListener('submit',async e=>{e.preventDefault();const fd=new FormData(e.target),ids=fd.getAll('teacherIds').map(Number),sid=Number(fd.get('subjectId')),sub=subjects.find(x=>x.id===sid);if(!ids.length){toast('Select at least one teacher');return}const chosen=ids.map(id=>teachers.find(t=>t.id===id)).filter(Boolean);if(chosen.length!==ids.length||chosen.some(t=>!eligibleTeacher(t,sub?.name,slot.className))){toast('Selected teacher is not eligible');return}
+ const clash=slots.find(x=>x.id!==slot.id&&x.day===slot.day&&x.period===slot.period&&slotTeacherIds(x).some(tid=>ids.some(id=>String(id)===String(tid))));if(clash){toast('Conflict: selected teacher is already booked');return}
+ await put('slots',{...slot,subjectId:sid,subjectName:sub.name,teacherId:ids[0],teacherIds:ids,teacherName:chosen.map(t=>t.name).join(' / ')});
+ $('.modal-backdrop').remove();toast('Period and teacher assignments saved');render();
+ });
 }
-
-
 async function assignmentsPage(){
  const [classes,subjects,teachers,slots,maps,s]=await Promise.all(['classes','subjects','teachers','slots','teachingAssignments','settings'].map(x=>x==='settings'?setting():all(x)));
  const pairs=[];for(const cl of classes)for(const sub of subjects.filter(x=>!x.classId||x.classId===cl.id)){const map=maps.find(x=>x.classId===cl.id&&x.subjectId===sub.id),count=slots.filter(x=>x.classId===cl.id&&x.subjectId===sub.id).length,need=Number(sub.periods||0);pairs.push({cl,sub,map,count,need,remaining:Math.max(0,need-count)})}
@@ -342,52 +349,27 @@ async function downloadFixtureReport(date,records,teachers,slots,settings){
 async function printTimetables(kind){
  const [classes,teachers,slots,s]=await Promise.all(['classes','teachers','slots','settings'].map(x=>x==='settings'?setting():all(x)));
  if(!slots.length){toast('Generate a timetable before printing');return}
- const days=(s.workingDays||DAYS).filter(d=>DAYS.includes(d)),schedules=days.map(day=>({day,schedule:scheduleForDay(s,day)}));
- const maxBefore=Math.max(0,...schedules.map(x=>(x.schedule.beforeBreak||[]).length)),maxAfter=Math.max(0,...schedules.map(x=>(x.schedule.afterBreak||[]).length));
- const people=kind==='class'?classes:teachers;
- const pages=people.map(person=>{
-  const relevant=kind==='class'?slots.filter(x=>x.classId===person.id):slots.filter(x=>(x.teacherIds||[x.teacherId]).some(id=>String(id)===String(person.id)));
-  if(!relevant.length)return '';
-  const header=kind==='class'?'Class - '+person.name:'Teacher '+person.name;
-  const periodHeaders=(items,offset)=>items.map((p,i)=>'<th><b>'+esc(p.name||('P'+(offset+i+1)))+'</b><small>'+esc(p.start)+'–'+esc(p.end)+'</small></th>').join('');
-  const th='<tr><th class="day-head">Day</th>'+periodHeaders(schedules[0]?.schedule.beforeBreak||[],0)+'<th class="break-head">Break</th>'+periodHeaders(schedules[0]?.schedule.afterBreak||[],maxBefore)+'</tr>';
-  const body=schedules.map(({day,schedule})=>{
-   const before=schedule.beforeBreak||[],after=schedule.afterBreak||[];
-   const cell=period=>{
-    const x=relevant.find(z=>z.day===day&&z.period===period+1);
-    if(!x)return '<td class="lesson-cell"></td>';
-    return kind==='class'
-      ?'<td class="lesson-cell"><b>'+esc(x.subjectName)+'</b><small>'+esc(x.teacherName)+'</small></td>'
-      :'<td class="lesson-cell"><small>Class - '+esc(x.className)+'</small><b>'+esc(x.subjectName)+'</b></td>';
-   };
-   return '<tr><th class="day-name">'+esc(day)+'</th>'+Array.from({length:maxBefore},(_,i)=>before[i]?cell(i):'<td class="lesson-cell"></td>').join('')+'<td class="break-cell">'+(schedule.breakEnabled===false?'':'<span>Break<br>'+esc(schedule.breakStart)+'–'+esc(schedule.breakEnd)+'</span>')+'</td>'+Array.from({length:maxAfter},(_,i)=>after[i]?cell(before.length+i):'<td class="lesson-cell"></td>').join('')+'</tr>';
-  }).join('');
-  return '<section class="print-page"><h1>'+esc(header)+'</h1><table class="print-table">'+th+body+'</table><div class="print-footer"><span>Timetable generated: '+new Date().toLocaleDateString('en-GB')+'</span><i>TimeCraft</i></div></section>';
+ const days=(s.workingDays||DAYS).filter(d=>DAYS.includes(d)),people=kind==='class'?classes:teachers;
+ const pages=people.map(person=>{const relevant=kind==='class'?slots.filter(x=>x.classId===person.id):slots.filter(x=>slotTeacherIds(x).some(id=>String(id)===String(person.id)));if(!relevant.length)return '';
+ const header=kind==='class'?'Class - '+person.name:'Teacher '+person.name;
+ const dayTables=days.map(day=>{const sc=scheduleForDay(s,day),before=sc.beforeBreak||[],after=sc.afterBreak||[],periods=[...before,...after];
+ const th=periods.map(p=>'<th><b>'+esc(p.name)+'</b><small>'+esc(p.start)+'–'+esc(p.end)+'</small></th>').join('');
+ const cells=periods.map((p,i)=>{const x=relevant.find(z=>z.day===day&&z.period===i+1);if(!x)return '<td></td>';return kind==='class'?'<td><b>'+esc(x.subjectName)+'</b><small>'+esc(slotTeacherNames(x,teachers))+'</small></td>':'<td><small>Class - '+esc(x.className)+'</small><b>'+esc(x.subjectName)+'</b></td>'});
+ cells.splice(before.length,0,'<td class="break-cell"><span>BREAK<br>'+esc(sc.breakStart)+'–'+esc(sc.breakEnd)+'</span></td>');
+ return '<h2>'+esc(day)+'</h2><table class="print-table"><thead><tr>'+th+'</tr></thead><tbody><tr>'+cells.join('')+'</tr></tbody></table>';
+ }).join('');
+ return '<section class="print-page"><h1>'+esc(header)+'</h1>'+dayTables+'<div class="print-footer">TimeCraft · '+new Date().toLocaleDateString('en-GB')+'</div></section>';
  }).filter(Boolean);
- if(!pages.length){toast('No timetable records found');return}
  const w=window.open('','_blank');if(!w){toast('Allow pop-ups to print the PDF');return}
- w.document.open();
- w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>TimeCraft ${kind} timetable</title><style>
+ w.document.open();w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>TimeCraft ${kind} timetable</title><style>
 *{box-sizing:border-box}html,body{margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;color:#111;background:#fff}
-.print-page{width:100%;height:210mm;padding:10mm 10mm 9mm;position:relative;page-break-after:always;break-after:page}
-.print-page:last-child{page-break-after:auto;break-after:auto}
-h1{text-align:center;font-size:22pt;line-height:1.15;margin:0 0 10mm;font-weight:700;letter-spacing:.1px}
-.print-table{border-collapse:collapse;width:100%;table-layout:fixed}
-.print-table th,.print-table td{border:1px solid #222;text-align:center;vertical-align:middle;padding:2px}
-.print-table thead th{height:12mm;background:#fff;font-size:9pt;font-weight:700}
-.print-table thead th small{display:block;font-size:6.8pt;font-weight:400;margin-top:2px;white-space:nowrap}
-.print-table .day-head{width:12%}
-.print-table .day-name{font-size:8.5pt;font-weight:700;width:12%}
-.print-table tbody td{height:21mm;font-size:9pt}
-.print-table td b{display:block;font-size:9pt;line-height:1.2;font-weight:700}
-.print-table td small{display:block;font-size:7.2pt;line-height:1.2;margin-top:3px;font-weight:400}
-.print-table .break-head{width:5%;font-size:8pt}
-.print-table .break-cell{width:5%;padding:0}
-.break-cell span{display:inline-block;writing-mode:vertical-rl;transform:rotate(180deg);font-size:7.5pt;line-height:1.2}
-.print-footer{position:absolute;bottom:5mm;left:10mm;right:10mm;display:flex;justify-content:space-between;font-size:7.5pt}
-.print-footer i{font-style:italic}
-@page{size:A4 landscape;margin:0}
-@media print{.print-page{height:210mm;break-after:page}.print-page:last-child{break-after:auto}}
+.print-page{width:100%;min-height:210mm;padding:8mm 9mm;page-break-after:always;break-after:page}.print-page:last-child{page-break-after:auto;break-after:auto}
+h1{text-align:center;font-size:19pt;margin:0 0 5mm}h2{font-size:9pt;margin:3mm 0 1mm;padding:1.5mm 2mm;background:#eef1f6}
+.print-table{border-collapse:collapse;width:100%;table-layout:fixed;margin-bottom:2mm}.print-table th,.print-table td{border:1px solid #222;text-align:center;vertical-align:middle;padding:2px}
+.print-table thead th{height:10mm;font-size:8pt}.print-table th small{display:block;font-size:6.5pt;font-weight:400;margin-top:2px}
+.print-table tbody td{height:13mm;font-size:8pt}.print-table td b{display:block;font-size:8pt}.print-table td small{display:block;font-size:6.5pt;margin-top:2px}
+.break-cell{width:7%;background:#f5f5f5}.break-cell span{font-size:6.5pt;writing-mode:vertical-rl;transform:rotate(180deg);display:inline-block}.print-footer{font-size:7pt;margin-top:4mm;text-align:right}
+@page{size:A4 landscape;margin:0}@media print{.print-page{break-after:page}.print-page:last-child{break-after:auto}}
 </style></head><body>${pages.join('')}</body></html>`);
  w.document.close();w.focus();setTimeout(()=>w.print(),700);
 }
