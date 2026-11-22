@@ -19,7 +19,7 @@
 /* Approved single-page class timetable layout */
 .approved-timetable-wrap{background:#fff;border:1.5px solid #222;border-radius:12px;padding:12px;overflow:hidden;color:#111}
 .approved-timetable-heading{display:grid;grid-template-columns:64px 1fr 150px;align-items:center;gap:10px;text-align:center;border:1px solid #222;border-radius:9px;padding:9px;margin-bottom:8px}
-.approved-emblem{width:54px;height:54px;border:2px solid #222;border-radius:50%;display:grid;place-items:center;font:700 13px Georgia,serif}
+.approved-emblem{width:54px;height:54px;border:0;border-radius:0;display:grid;place-items:center}.approved-emblem .school-education-logo{width:100%;height:100%;display:block}
 .approved-timetable-heading h2{font:700 clamp(17px,2.3vw,27px) Georgia,serif;margin:0 0 6px;color:#111}
 .approved-class-title{display:inline-block;background:#e5e5e5;border-radius:24px;padding:6px 22px;font:700 16px Georgia,serif}
 .approved-effective{font:700 11px Georgia,serif;border:1px solid #222;border-radius:7px;padding:8px}
