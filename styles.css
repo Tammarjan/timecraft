@@ -45,3 +45,6 @@
 /* Fixture list controls: keep actions usable on narrow installed-app screens. */
 .welcome .toolbar{margin:0;align-self:center}.actions{flex-wrap:wrap;align-items:center}
 @media(max-width:640px){.welcome .toolbar{width:100%;justify-content:flex-start}.welcome{align-items:flex-start}}
+
+/* Compact fixture status with tap-for-details control. */
+.fixture-status{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}.fixture-info{width:20px;height:20px;min-width:20px;padding:0!important;border:1px solid #cbd5e1!important;border-radius:50%!important;font-size:12px!important;font-weight:800!important;line-height:18px!important;color:#52627a!important}.fixture-info-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.fixture-detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:14px 0}.fixture-detail{padding:9px 10px;border:1px solid var(--line);border-radius:9px;min-width:0}.fixture-detail span{display:block;color:var(--muted);font-size:10px;margin-bottom:4px}.fixture-detail b{display:block;font-size:12px;overflow-wrap:anywhere}.fixture-detail-reason{margin-top:8px}.fixture-detail-reason p{margin:5px 0 0;line-height:1.5}@media(max-width:520px){.fixture-detail-grid{grid-template-columns:1fr}}
