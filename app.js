@@ -265,11 +265,11 @@ async function resolvePendingFixtures(){
   fixtures.filter(x=>x.date===f.date&&x.id!==f.id&&Number(x.period)===Number(f.period)&&x.substituteId!=null).forEach(x=>occupied.add(String(x.substituteId)));
   const week=weekStartKey(f.date);
   const load=t=>regularTeacherLoad(slots,t)+fixtures.filter(x=>x.substituteId!=null&&same(x.substituteId,t.id)&&weekStartKey(x.date)===week).length+(addedWeekly.get(week+'|'+t.id)||0);
-  const candidates=teachers.filter(t=>!absent.has(String(t.id))&&(used.get(String(t.id))||0)<2&&!occupied.has(String(t.id))&&Number(t.maxPeriods??30)>load(t));
-  candidates.sort((a,b)=>fixtureEligibilityTier(a,f,slots)-fixtureEligibilityTier(b,f,slots)||(used.get(String(a.id))||0)-(used.get(String(b.id))||0)||load(a)-load(b)||a.name.localeCompare(b.name));
+  const candidates=teachers.filter(t=>!absent.has(String(t.id))&&!occupied.has(String(t.id)));
+  candidates.sort((a,b)=>fixtureEligibilityTier(a,f,slots)-fixtureEligibilityTier(b,f,slots)||((used.get(String(a.id))||0)>=2?1:0)-((used.get(String(b.id))||0)>=2?1:0)||((load(a)>=Number(a.maxPeriods??30))?1:0)-((load(b)>=Number(b.maxPeriods??30))?1:0)||load(a)-load(b)||a.name.localeCompare(b.name));
   const sub=candidates[0];if(!sub)continue;
   const tier=fixtureEligibilityTier(sub,f,slots),count=(used.get(String(sub.id))||0)+1;
-  updates.push({...f,substituteId:sub.id,substituteName:sub.name,assignmentSource:f.assignmentSource||'auto',assignmentLevel:tier===0?'same-class-cover':'emergency-other-class',reason:'Auto-resolved: '+fixtureAssignmentReason(tier)+(count===2?' · second fixture (emergency)':'')});
+  updates.push({...f,substituteId:sub.id,substituteName:sub.name,assignmentSource:f.assignmentSource||'auto',assignmentLevel:tier===0?'same-class-cover':'emergency-other-class',reason:'Auto-resolved: '+fixtureAssignmentReason(tier)+(count>=2?' · extra daily fixture (soft limit exceeded)':'')+(load(sub)>=Number(sub.maxPeriods??30)?' · weekly workload preference exceeded':'')});
   used.set(String(sub.id),count);usedByDate.set(f.date,used);addedWeekly.set(week+'|'+sub.id,(addedWeekly.get(week+'|'+sub.id)||0)+1);
  }
  if(!updates.length)return;
@@ -314,13 +314,13 @@ async function replaceFixture(id){
  const occupied=slots.filter(x=>x.day===f.day&&Number(x.period)===Number(f.period)).flatMap(slotTeacherIds).map(String);
  todayOthers.filter(x=>Number(x.period)===Number(f.period)).forEach(x=>occupied.push(String(x.substituteId)));
  const load=t=>regularTeacherLoad(slots,t)+fixtures.filter(x=>x.id!==f.id&&same(x.substituteId,t.id)&&inWeek(x.date)).length;
- const candidates=teachers.filter(t=>!absentToday.has(String(t.id))&&(usedCounts.get(String(t.id))||0)<2&&!tried.has(String(t.id))&&!occupied.includes(String(t.id))&&Number(t.maxPeriods??30)>load(t));
- candidates.sort((a,b)=>fixtureEligibilityTier(a,f,slots)-fixtureEligibilityTier(b,f,slots)||(usedCounts.get(String(a.id))||0)-(usedCounts.get(String(b.id))||0)||load(a)-load(b)||a.name.localeCompare(b.name));
+ const candidates=teachers.filter(t=>!absentToday.has(String(t.id))&&!tried.has(String(t.id))&&!occupied.includes(String(t.id)));
+ candidates.sort((a,b)=>fixtureEligibilityTier(a,f,slots)-fixtureEligibilityTier(b,f,slots)||((usedCounts.get(String(a.id))||0)>=1?1:0)-((usedCounts.get(String(b.id))||0)>=1?1:0)||((load(a)>=Number(a.maxPeriods??30))?1:0)-((load(b)>=Number(b.maxPeriods??30))?1:0)||load(a)-load(b)||a.name.localeCompare(b.name));
  const next=candidates[0];
  if(!next){toast('No available teacher; this fixture remains unassigned');return}
  const history=[...(f.replacedTeacherIds||[])];if(f.substituteId!=null&&!history.some(v=>same(v,f.substituteId)))history.push(f.substituteId);
  const tier=fixtureEligibilityTier(next,f,slots),count=(usedCounts.get(String(next.id))||0)+1;
- await put('fixtures',{...f,substituteId:next.id,substituteName:next.name,replacedTeacherIds:history,assignmentLevel:tier===0?'same-class-cover':'emergency-other-class',reason:'Replaced: '+fixtureAssignmentReason(tier)+(count===2?' · second fixture (emergency)':''),assignmentSource:'manual'});
+ await put('fixtures',{...f,substituteId:next.id,substituteName:next.name,replacedTeacherIds:history,assignmentLevel:tier===0?'same-class-cover':'emergency-other-class',reason:'Replaced: '+fixtureAssignmentReason(tier)+(count>=2?' · extra daily fixture (soft limit exceeded)':'')+(load(next)>=Number(next.maxPeriods??30)?' · weekly workload preference exceeded':''),assignmentSource:'manual'});
  toast('Replaced with '+next.name);render();
 }
 
@@ -345,12 +345,12 @@ async function autoAssignFixtures(){
  for(const absentTeacher of absent){
   const lessons=slots.filter(x=>slotTeacherIds(x).some(id=>sameId(id,absentTeacher.id))&&x.day===day).sort((a,b)=>a.period-b.period);
   for(const lesson of lessons){
-   const choices=teachers.filter(t=>!sameId(t.id,absentTeacher.id)&&!dayAbsentSet.has(String(t.id))&&(dailyCounts.get(String(t.id))||0)<2&&Number(t.maxPeriods??30)>Number(load.get(String(t.id))||0)&&!occupied.has(String(t.id)+'|'+lesson.period));
-   choices.sort((a,b)=>fixtureEligibilityTier(a,lesson,slots)-fixtureEligibilityTier(b,lesson,slots)||(dailyCounts.get(String(a.id))||0)-(dailyCounts.get(String(b.id))||0)||(load.get(String(a.id))||0)-(load.get(String(b.id))||0)||a.name.localeCompare(b.name));
+   const choices=teachers.filter(t=>!sameId(t.id,absentTeacher.id)&&!dayAbsentSet.has(String(t.id))&&!occupied.has(String(t.id)+'|'+lesson.period));
+   choices.sort((a,b)=>fixtureEligibilityTier(a,lesson,slots)-fixtureEligibilityTier(b,lesson,slots)||((dailyCounts.get(String(a.id))||0)>=1?1:0)-((dailyCounts.get(String(b.id))||0)>=1?1:0)||((Number(load.get(String(a.id))||0)>=Number(a.maxPeriods??30))?1:0)-((Number(load.get(String(b.id))||0)>=Number(b.maxPeriods??30))?1:0)||(load.get(String(a.id))||0)-(load.get(String(b.id))||0)||a.name.localeCompare(b.name));
    const sub=choices[0]||null;
    if(sub){const key=String(sub.id);dailyCounts.set(key,(dailyCounts.get(key)||0)+1);occupied.add(key+'|'+lesson.period);load.set(key,(load.get(key)||0)+1)}
    const tier=sub?fixtureEligibilityTier(sub,lesson,slots):null,count=sub?(dailyCounts.get(String(sub.id))||0):0;
-   pending.push({date,day,absentId:absentTeacher.id,absentName:absentTeacher.name,classId:lesson.classId,className:lesson.className,subjectId:lesson.subjectId,subjectName:lesson.subjectName,period:lesson.period,periodName:lesson.periodName||('P'+lesson.period),start:lesson.start||'',end:lesson.end||'',substituteId:sub?.id||null,substituteName:sub?.name||'',assignmentLevel:sub?(tier===0?'same-class-cover':'emergency-other-class'):null,reason:sub?'Auto-assigned: '+fixtureAssignmentReason(tier)+(count===2?' · second fixture (emergency)':''):'No available free teacher in the class or emergency pool',assignmentSource:'auto',replacedTeacherIds:[]});
+   pending.push({date,day,absentId:absentTeacher.id,absentName:absentTeacher.name,classId:lesson.classId,className:lesson.className,subjectId:lesson.subjectId,subjectName:lesson.subjectName,period:lesson.period,periodName:lesson.periodName||('P'+lesson.period),start:lesson.start||'',end:lesson.end||'',substituteId:sub?.id||null,substituteName:sub?.name||'',assignmentLevel:sub?(tier===0?'same-class-cover':'emergency-other-class'):null,reason:sub?'Auto-assigned: '+fixtureAssignmentReason(tier)+(count>=2?' · extra daily fixture (soft limit exceeded)':'')+(Number(load.get(String(sub.id))||0)>=Number(sub.maxPeriods??30)?' · weekly workload preference exceeded':''):'No teacher free in this period',assignmentSource:'auto',replacedTeacherIds:[]});
   }
  }
  const tx=db.transaction('fixtures','readwrite'),store=tx.objectStore('fixtures');
