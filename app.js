@@ -4,7 +4,9 @@
 'use strict';
 const DB_NAME='timecraft-db', DB_VERSION=2;
 const stores=['teachers','classes','subjects','slots','fixtures','settings','teachingAssignments'];
-let db, currentView='dashboard', editing=null, selectedTimetableClassId=null;
+const validViews=['dashboard','timetable','assignments','fixtures','teachers','classes','subjects','settings'];
+const requestedView=new URLSearchParams(location.search).get('view');
+let db, currentView=validViews.includes(requestedView)?requestedView:'dashboard', editing=null, selectedTimetableClassId=null;
 const $=s=>document.querySelector(s), esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const DAYS=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 function eligibleTeacher(t,subjectName,className){
