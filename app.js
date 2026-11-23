@@ -86,18 +86,38 @@ function schoolEducationLogo(){return '<svg class="school-education-logo" viewBo
 
 async function timetablePage(){
  const [classes,subjects,teachers,slots,s]=await Promise.all(['classes','subjects','teachers','slots','settings'].map(x=>x==='settings'?setting():all(x)));
- const days=(s.workingDays||DAYS).filter(d=>DAYS.includes(d)),tm=selectedTimetableTeacherId!=null,person=tm?teachers.find(t=>String(t.id)===String(selectedTimetableTeacherId)):classes.find(x=>String(x.id)===String(selectedTimetableClassId))||classes[0];
+ const days=(s.workingDays||DAYS).filter(d=>DAYS.includes(d)),tm=selectedTimetableTeacherId!=null;
+ const person=tm?teachers.find(t=>String(t.id)===String(selectedTimetableTeacherId)):classes.find(x=>String(x.id)===String(selectedTimetableClassId))||classes[0];
  if(!person)return empty('No timetable','Add a class or teacher first.');
  const visible=slots.filter(x=>tm?slotTeacherIds(x).some(id=>String(id)===String(person.id)):String(x.classId)===String(person.id));
- const wd=scheduleForDay(s,'Monday'),pre=wd.beforeBreak||[],post=wd.afterBreak||[],heads=[...pre,...post].map((p,i)=>'<th><b>Period '+(i+1)+'</b><small>'+esc(p.start)+' – '+esc(p.end)+'</small></th>');heads.splice(pre.length,0,'<th class="approved-break-head">Break<small>'+esc(wd.breakStart)+' – '+esc(wd.breakEnd)+'</small></th>');
  const fmt=t=>{const z=t.split(':').map(Number),h=z[0],m=z[1];return String(h%12||12).padStart(2,'0')+':'+String(m).padStart(2,'0')+' '+(h>=12?'PM':'AM')};
- const rows=days.map(day=>{const sc=scheduleForDay(s,day),p1=sc.beforeBreak||[],p2=sc.afterBreak||[],ps=[...p1,...p2],isF=day==='Friday';
-  const cell=i=>{const x=visible.find(z=>z.day===day&&Number(z.period)===i+1);if(!x)return '<td><span class="approved-empty">—</span></td>';if(tm){const opts='<option value="">Change teacher</option>'+teachers.map(t=>'<option value="'+t.id+'" '+(slotTeacherIds(x).some(id=>String(id)===String(t.id))?'selected':'')+'>'+esc(t.name)+'</option>').join('');return '<td><b>'+esc(x.subjectName)+'</b><small>'+esc(x.className||'')+'</small><select class="timetable-teacher-change" data-class-id="'+x.classId+'" data-subject-id="'+x.subjectId+'">'+opts+'</select></td>';}return '<td><button class="approved-slot" data-action="edit-slot-'+x.id+'"><b>'+esc(x.subjectName)+'</b><small>'+esc(slotTeacherNames(x,teachers))+'</small></button></td>';};
-  const br='<td class="approved-break-cell"><span>☕<b>Break</b><small>'+esc(sc.breakStart)+' – '+esc(sc.breakEnd)+'</small></span></td>';let cells=p1.map((p,i)=>cell(i)).join('')+br+p2.map((p,i)=>cell(p1.length+i)).join('');if(isF&&p2.length<3)cells+='<td class="approved-off" colspan="'+(4-p2.length)+'"><b>OFF</b></td>';return '<tr><th class="approved-day">'+esc(day)+'</th><td class="approved-time">'+esc(fmt(ps[0]?.start||'09:00'))+' – '+esc(fmt(sc.offTime||'14:00'))+'</td>'+cells+'</tr>';}).join('');
  const cs='<select id="classFilter" '+(tm?'disabled':'')+'><option value="">Select class</option>'+classes.map(x=>'<option value="'+x.id+'" '+(!tm&&String(x.id)===String(person.id)?'selected':'')+'>'+esc(x.name)+'</option>').join('')+'</select>';
- const ts='<select id="teacherFilter"><option value="">Select teacher</option>'+teachers.map(x=>'<option value="'+x.id+'" '+(tm&&String(x.id)===String(person.id)?'selected':'')+'>'+esc(x.name)+'</option>').join('')+'</select>';
- return '<div class="welcome"><div><h2>'+ (tm?'Teacher Time Table':'Class Time Table')+'</h2><p>Approved A4 landscape layout · '+esc(person.name)+'</p></div>'+(!tm?btn('Generate timetable','generate','btn'):'')+'</div><div class="toolbar">'+cs+ts+'<span class="spacer"></span>'+btn(tm?'Teacher-wise PDF':'Class-wise PDF',tm?'print-selected-teacher':'print-class','btn secondary')+'</div><div class="approved-timetable-wrap"><div class="approved-timetable-heading"><div class="approved-emblem">'+schoolEducationLogo()+'</div><div><h2>'+esc(s.schoolName||'Government Higher Secondary School')+'</h2><div class="approved-class-title">'+(tm?'Teacher ':'Class ')+esc(person.name)+' – Time Table</div></div><div class="approved-effective">Effective From:<br><b>21 October 2026</b></div></div><div class="approved-timetable-scroll"><table class="approved-timetable"><thead><tr><th>DAY</th><th>TIME</th>'+heads.join('')+'</tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+ const ts='<select id="teacherFilter"><option value="">Select teacher</option>'+teachers.map(t=>{const load=slots.filter(x=>slotTeacherIds(x).some(id=>String(id)===String(t.id))).length;return '<option value="'+t.id+'" '+(tm&&String(t.id)===String(person.id)?'selected':'')+'>'+esc(t.name)+' — '+load+'p</option>'}).join('')+'</select>';
+ let timetable='';
+ if(tm){
+  const dayCards=days.map(day=>{
+   const sc=scheduleForDay(s,day),p1=sc.beforeBreak||[],p2=sc.afterBreak||[],periods=[...p1,...p2];
+   const items=periods.map((p,i)=>{
+    const x=visible.find(z=>z.day===day&&Number(z.period)===i+1);
+    if(!x)return '';
+    const options='<option value="">Change teacher</option>'+teachers.map(t=>'<option value="'+t.id+'" '+(slotTeacherIds(x).some(id=>String(id)===String(t.id))?'selected':'')+'>'+esc(t.name)+'</option>').join('');
+    const className=x.className||classes.find(k=>String(k.id)===String(x.classId))?.name||'Class';
+    return '<div class="teacher-period-card"><div class="teacher-period-time"><b>P'+(i+1)+'</b><span>'+esc(p.start)+' – '+esc(p.end)+'</span></div><div class="teacher-period-info"><b>'+esc(x.subjectName||'Subject')+'</b><small>'+esc(className)+'</small></div><div class="teacher-period-edit"><select class="timetable-teacher-change" data-class-id="'+x.classId+'" data-subject-id="'+x.subjectId+'" aria-label="Change teacher for '+esc(x.subjectName||'subject')+'">'+options+'</select></div></div>';
+   }).filter(Boolean).join('');
+   return '<section class="teacher-day-card"><h3>'+esc(day)+'</h3>'+(items||'<p class="teacher-no-periods">No periods assigned</p>')+'</section>';
+  }).join('');
+  timetable='<div class="teacher-timetable"><div class="teacher-timetable-summary"><b>'+esc(person.name)+'</b><span>'+visible.length+' periods per week</span></div><div class="teacher-days-grid">'+dayCards+'</div></div>';
+ }else{
+  const wd=scheduleForDay(s,'Monday'),pre=wd.beforeBreak||[],post=wd.afterBreak||[],heads=[...pre,...post].map((p,i)=>'<th><b>Period '+(i+1)+'</b><small>'+esc(p.start)+' – '+esc(p.end)+'</small></th>');heads.splice(pre.length,0,'<th class="approved-break-head">Break<small>'+esc(wd.breakStart)+' – '+esc(wd.breakEnd)+'</small></th>');
+  const rows=days.map(day=>{const sc=scheduleForDay(s,day),p1=sc.beforeBreak||[],p2=sc.afterBreak||[],ps=[...p1,...p2],isF=day==='Friday';
+   const cell=i=>{const x=visible.find(z=>z.day===day&&Number(z.period)===i+1);if(!x)return '<td><span class="approved-empty">—</span></td>';return '<td><button class="approved-slot" data-action="edit-slot-'+x.id+'"><b>'+esc(x.subjectName)+'</b><small>'+esc(slotTeacherNames(x,teachers))+'</small></button></td>'};
+   const br='<td class="approved-break-cell"><span>☕<b>Break</b><small>'+esc(sc.breakStart)+' – '+esc(sc.breakEnd)+'</small></span></td>';let cells=p1.map((p,i)=>cell(i)).join('')+br+p2.map((p,i)=>cell(p1.length+i)).join('');if(isF&&p2.length<3)cells+='<td class="approved-off" colspan="'+(4-p2.length)+'"><b>OFF</b></td>';return '<tr><th class="approved-day">'+esc(day)+'</th><td class="approved-time">'+esc(fmt(ps[0]?.start||'09:00'))+' – '+esc(fmt(sc.offTime||'14:00'))+'</td>'+cells+'</tr>';
+  }).join('');
+  timetable='<div class="approved-timetable-wrap"><div class="approved-timetable-heading"><div class="approved-emblem">'+schoolEducationLogo()+'</div><div><h2>'+esc(s.schoolName||'Government Higher Secondary School')+'</h2><div class="approved-class-title">Class '+esc(person.name)+' – Time Table</div></div><div class="approved-effective">Effective From:<br><b>21 October 2026</b></div></div><div class="approved-timetable-scroll"><table class="approved-timetable"><thead><tr><th>DAY</th><th>TIME</th>'+heads.join('')+'</tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+ }
+ return '<div class="welcome"><div><h2>'+ (tm?'Teacher Time Table':'Class Time Table')+'</h2><p>'+(tm?'Weekly teacher schedule · '+esc(person.name):'Approved A4 landscape layout · '+esc(person.name))+'</p></div>'+(!tm?btn('Generate timetable','generate','btn'):'')+'</div><div class="toolbar">'+cs+ts+'<span class="spacer"></span>'+btn(tm?'Teacher PDF':'Class-wise PDF',tm?'print-selected-teacher':'print-class','btn secondary')+'</div>'+timetable;
 }
+
 async function changeTimetableSubjectTeacher(classId,subjectId,teacherId){
  const [teachers,maps,slots]=await Promise.all(['teachers','teachingAssignments','slots'].map(all));const t=teachers.find(x=>String(x.id)===String(teacherId)),m=maps.find(x=>String(x.classId)===String(classId)&&String(x.subjectId)===String(subjectId)),affected=slots.filter(x=>String(x.classId)===String(classId)&&String(x.subjectId)===String(subjectId));
  if(!t||!m||!affected.length){toast('Teacher assignment not found');render();return}
