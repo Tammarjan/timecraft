@@ -6,7 +6,7 @@ const DB_NAME='timecraft-db', DB_VERSION=2;
 const stores=['teachers','classes','subjects','slots','fixtures','settings','teachingAssignments'];
 const validViews=['dashboard','timetable','assignments','fixtures','teachers','classes','subjects','settings'];
 const requestedView=new URLSearchParams(location.search).get('view');
-let db, currentView=validViews.includes(requestedView)?requestedView:'dashboard', editing=null, selectedTimetableClassId=null, selectedTimetableTeacherId=null, selectedFixtureDate=null;
+let db, currentView=validViews.includes(requestedView)?requestedView:'dashboard', editing=null, selectedTimetableClassId=null, selectedTimetableTeacherId=null, selectedFixtureDate=null, pendingTeacherRepair=null;
 const $=s=>document.querySelector(s), esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const DAYS=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 function eligibleTeacher(t,subjectName,className){
@@ -116,7 +116,11 @@ async function changeTimetableSubjectTeacher(classId,subjectId,teacherId){
  const [teachers,maps,slots]=await Promise.all(['teachers','teachingAssignments','slots'].map(all));const t=teachers.find(x=>String(x.id)===String(teacherId)),m=maps.find(x=>String(x.classId)===String(classId)&&String(x.subjectId)===String(subjectId)),affected=slots.filter(x=>String(x.classId)===String(classId)&&String(x.subjectId)===String(subjectId));
  if(!t||!m||!affected.length){toast('Teacher assignment not found');render();return}
  const conflict=affected.find(x=>slots.some(y=>String(y.id)!==String(x.id)&&y.day===x.day&&Number(y.period)===Number(x.period)&&slotTeacherIds(y).some(id=>String(id)===String(t.id))));
- if(conflict){toast(t.name+' already has a class at '+conflict.day+' P'+conflict.period);render();return}
+ if(conflict){
+  pendingTeacherRepair={classId,subjectId,teacherId:t.id,map:m};
+  openModal('<h3>Teacher clash detected</h3><p class="hint"><b>'+esc(t.name)+'</b> already has a class on '+esc(conflict.day)+' P'+esc(conflict.period)+'.</p><p class="hint">Would you like TimeCraft to rearrange subject periods automatically? Teacher-subject assignments will be kept as selected, and no teacher will be changed automatically.</p><div class="form-actions"><button class="btn ghost" data-action="cancel-teacher-repair">No, keep timetable</button><button class="btn" data-action="confirm-teacher-repair">Yes, rearrange periods</button></div>');
+  return;
+ }
  await put('teachingAssignments',{...m,teacherId:t.id,teacherIds:[t.id]});for(const x of affected)await put('slots',{...x,teacherId:t.id,teacherName:t.name,teacherIds:[t.id]});toast('All '+affected.length+' weekly periods updated to '+t.name);render();
 }
 async function generateTimetable(forceRearrange=false){
@@ -667,6 +671,8 @@ document.addEventListener('click',async e=>{const b=e.target.closest('[data-acti
  else if(a.startsWith('delete-fixture-')){if(confirm('Delete this fixture record?')){await del('fixtures',a.slice(15));toast('Fixture deleted');render()}}
  else if(a.startsWith('delete-')){const p=a.split('-');if(confirm('Delete this record?')){await del(p[1],p.slice(2).join('-'));toast('Deleted');render()}}
  else if(a==='close-modal')$('.modal-backdrop')?.remove();
+ else if(a==='cancel-teacher-repair'){pendingTeacherRepair=null;$('.modal-backdrop')?.remove();render()}
+ else if(a==='confirm-teacher-repair'){const p=pendingTeacherRepair;pendingTeacherRepair=null;$('.modal-backdrop')?.remove();if(p){const [slots]=await Promise.all([all('slots')]);await put('teachingAssignments',{...p.map,teacherId:p.teacherId,teacherIds:[p.teacherId]});await generateTimetable(true)}}
  else if(a.startsWith('add-period-')){const group=a.slice(11),list=document.querySelector('[data-period-group="'+group+'"]');if(list){const count=list.querySelectorAll('.period-row').length+1,row=document.createElement('div');row.className='period-row';row.innerHTML='<input aria-label="Period name" data-period-name value="P'+count+'" placeholder="P'+count+'"><label>From<input type="time" data-period-start value="09:00"></label><label>To<input type="time" data-period-end value="10:00"></label><button type="button" class="btn danger small" data-action="remove-period">Remove</button>';list.appendChild(row)}}
  else if(a==='remove-period'){const row=b.closest('.period-row'),list=b.closest('.period-list');if(list.querySelectorAll('.period-row').length<=1){toast('At least one period is required in each section');return}row.remove()}
  else if(a==='generate')await generateTimetable();
