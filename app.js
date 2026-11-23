@@ -196,26 +196,23 @@ async function generateTimetable(){
      if(classSlots.has(key(req.classId,day,period)))continue;
      if(String(req.subjectName).trim().toLowerCase()==='english'&&period!==1)continue;
      const assignedIds=eligible.get(req.classId+'|'+req.subjectId);
-    const assignedTeachers=assignedIds.map(id=>teachers.find(t=>t.id===id)).filter(Boolean);
-    if(assignedTeachers.length!==assignedIds.length)continue;
-    if(assignedTeachers.some(t=>teacherSlots.has(key(t.id,day,period))))continue;
-    // Prefer a gap between lessons. A pair of consecutive periods is allowed
-    // only when no non-consecutive placement is available (high score penalty).
-    // Never create a run of three consecutive periods for any teacher.
-    const createsTriple=assignedTeachers.some(t=>{
-     const occupied=p=>teacherSlots.has(key(t.id,day,p));
-     return (occupied(period-1)&&occupied(period-2))||
-            (occupied(period-1)&&occupied(period+1))||
-            (occupied(period+1)&&occupied(period+2));
-    });
-    const consecutive=assignedTeachers.some(t=>teacherSlots.has(key(t.id,day,period-1))||teacherSlots.has(key(t.id,day,period+1)));
-    const loadScore=assignedTeachers.reduce((n,t)=>n+workload.get(t.id),0);
-    // Consecutive periods are preferences, not hard constraints. Strongly
-    // discourage a third consecutive period, but allow it when required
-    // to complete the timetable.
-    const triplePenalty=createsTriple?1000000:0;
-    const consecutivePenalty=consecutive?100000:0,dayPenalty=di===lastDayIndex?1:0;
-    candidates.push({day,dayIndex:di,period,teachers:assignedTeachers,score:triplePenalty+consecutivePenalty+loadScore*100+dayPenalty*10+period});
+    // Match Smart School: assigned teachers are eligible options; select ONE
+    // available teacher for each lesson, rather than blocking every assigned
+    // teacher into every period. This lets co-assigned teachers share periods.
+    for(const id of assignedIds){
+     const teacher=teachers.find(t=>String(t.id)===String(id));
+     if(!teacher||teacherSlots.has(key(teacher.id,day,period)))continue;
+     const occupied=p=>teacherSlots.has(key(teacher.id,day,p));
+     const createsTriple=(occupied(period-1)&&occupied(period-2))||
+                         (occupied(period-1)&&occupied(period+1))||
+                         (occupied(period+1)&&occupied(period+2));
+     const consecutive=occupied(period-1)||occupied(period+1);
+     const triplePenalty=createsTriple?1000000:0;
+     const consecutivePenalty=consecutive?100000:0;
+     const loadScore=workload.get(teacher.id)||0;
+     const dayPenalty=di===lastDayIndex?1:0;
+     candidates.push({day,dayIndex:di,period,teachers:[teacher],score:triplePenalty+consecutivePenalty+loadScore*100+dayPenalty*10+period});
+    }
     }
    }
    candidates.sort((x,y)=>x.score-y.score||x.dayIndex-y.dayIndex||x.period-y.period);
