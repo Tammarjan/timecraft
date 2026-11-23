@@ -106,7 +106,7 @@ async function timetablePage(){
 }
 
 async function generateTimetable(){
- const [classes,subjects,teachers,s,maps]=await Promise.all(['classes','subjects','teachers','settings','teachingAssignments'].map(x=>x==='settings'?setting():all(x)));
+ const [classes,subjects,teachers,s,maps,savedSlots]=await Promise.all(['classes','subjects','teachers','settings','teachingAssignments','slots'].map(x=>x==='settings'?setting():all(x)));
  if(!classes.length||!teachers.length||!subjects.length){toast('Add classes, subjects and teachers first');return}
  const days=(s.workingDays||DAYS).filter(d=>DAYS.includes(d)),dayOrder=[...DAYS];
  if(!days.length){toast('Select at least one working day');return}
@@ -124,6 +124,46 @@ async function generateTimetable(){
    if(count>totalPerClass){toast(cl.name+' — '+sub.name+' requires more weekly periods than available slots.');return}
    if(count)requirements.push({classId:cl.id,className:cl.name,subjectId:sub.id,subjectName:sub.name,remaining:count});
   }
+ }
+ // Reuse the school's existing original timetable when it already satisfies
+ // the current subject counts, teacher assignments, school periods and clash rules.
+ // This preserves the proven original arrangement instead of needlessly rebuilding it.
+ const expected=new Map(requirements.map(r=>[r.classId+'|'+r.subjectId,r.remaining]));
+ const actual=new Map(),teacherBusy=new Set(),classBusy=new Set();
+ let savedValid=savedSlots.length===requirements.reduce((n,r)=>n+r.remaining,0);
+ const slotKey=(...v)=>v.join('|');
+ if(savedValid){
+  for(const slot of savedSlots){
+   const k=slotKey(slot.classId,slot.subjectId);
+   actual.set(k,(actual.get(k)||0)+1);
+   const dayPeriods=periodsByDay[slot.day]||0;
+   const assigned=(slot.teacherIds||[slot.teacherId]).filter(Boolean);
+   const map=maps.find(x=>x.classId===slot.classId&&x.subjectId===slot.subjectId);
+   const allowed=new Set(map?(map.teacherIds||[map.teacherId]).filter(Boolean):[]);
+   if(!days.includes(slot.day)||!Number.isInteger(Number(slot.period))||slot.period<1||slot.period>dayPeriods||
+      !assigned.length||assigned.some(id=>!allowed.has(id))||
+      (String(slot.subjectName).trim().toLowerCase()==='english'&&Number(slot.period)!==1)){
+    savedValid=false;break;
+   }
+   const ck=slotKey(slot.classId,slot.day,slot.period);
+   if(classBusy.has(ck)){savedValid=false;break}
+   classBusy.add(ck);
+   for(const id of assigned){
+    const tk=slotKey(id,slot.day,slot.period);
+    if(teacherBusy.has(tk)){savedValid=false;break}
+    teacherBusy.add(tk);
+   }
+   if(!savedValid)break;
+  }
+ }
+ if(savedValid){
+  for(const [k,n] of expected)if((actual.get(k)||0)!==n){savedValid=false;break}
+  for(const k of actual.keys())if(!expected.has(k)){savedValid=false;break}
+ }
+ if(savedValid){
+  toast('Original timetable is complete and valid · '+savedSlots.length+' periods');render();
+  openModal('<h3>Timetable is already complete</h3><p class="hint">The original timetable already matches all current subject periods and teacher assignments. Its original day/period arrangement has been preserved. No changes were made.</p><div class="form-actions"><button class="btn" data-action="close-modal">Close</button></div>');
+  return;
  }
  const eligible=new Map();
  for(const req of requirements){
@@ -182,8 +222,8 @@ async function generateTimetable(){
    const chosen=candidates[0];
    if(!chosen){
     const shortage=req.className+' — '+req.subjectName;
-    toast('Cannot complete timetable for '+shortage+'. Teacher availability, assignments, weekly limits or school periods need checking. Existing timetable preserved.');
-    openModal('<h3>Timetable could not be completed</h3><p class="hint">'+esc(shortage)+' could not be placed. No partial timetable was saved. Check teacher assignments, weekly limits and available periods.</p><div class="form-actions"><button class="btn" data-action="close-modal">Close</button></div>');
+    toast('Cannot complete timetable for '+shortage+'. Teacher availability, assignments or school periods need checking. Existing timetable preserved.');
+    openModal('<h3>Timetable could not be completed</h3><p class="hint">'+esc(shortage)+' could not be placed. No partial timetable was saved. Check teacher assignments and available periods.</p><div class="form-actions"><button class="btn" data-action="close-modal">Close</button></div>');
     return;
    }
    const pi=[...(scheduleForDay(s,chosen.day).beforeBreak||[]),...(scheduleForDay(s,chosen.day).afterBreak||[])][chosen.period-1];
