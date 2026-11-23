@@ -146,6 +146,20 @@ async function generateTimetable(forceRearrange=false){
  const actual=new Map(),teacherBusy=new Set(),classBusy=new Set();
  let savedValid=savedSlots.length===requirements.reduce((n,r)=>n+r.remaining,0);
  const slotKey=(...v)=>v.join('|');
+ const teacherClashes=[];
+ const seenTeacherSlots=new Map();
+ for(const slot of savedSlots){
+  for(const id of (slot.teacherIds||[slot.teacherId]).filter(Boolean)){
+   const k=slotKey(id,slot.day,slot.period),prior=seenTeacherSlots.get(k);
+   if(prior)teacherClashes.push({teacherId:id,day:slot.day,period:slot.period,first:prior,second:slot});
+   else seenTeacherSlots.set(k,slot);
+  }
+ }
+ if(teacherClashes.length&&!forceRearrange){
+  const clash=teacherClashes[0],teacher=teachers.find(t=>String(t.id)===String(clash.teacherId));
+  openModal('<h3>Teacher clash detected</h3><p class="hint"><b>'+esc(teacher?.name||'A teacher')+'</b> is assigned to more than one class on '+esc(clash.day)+' P'+esc(clash.period)+'.</p><p class="hint">Would you like TimeCraft to rearrange subject periods automatically? All teacher-subject assignments will remain unchanged.</p><div class="form-actions"><button class="btn ghost" data-action="close-modal">No, keep timetable</button><button class="btn" data-action="auto-rearrange-timetable">Yes, fix clash</button></div>');
+  return;
+ }
  if(savedValid){
   for(const slot of savedSlots){
    const k=slotKey(slot.classId,slot.subjectId);
