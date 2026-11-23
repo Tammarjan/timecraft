@@ -169,7 +169,7 @@ async function generateTimetable(){
  for(const req of requirements){
   const map=maps.find(x=>x.classId===req.classId&&x.subjectId===req.subjectId);
   const ids=map?(map.teacherIds||[map.teacherId]).filter(Boolean):null;
-  const candidates=teachers.filter(t=>(!ids||ids.includes(t.id))&&eligibleTeacher(t,req.subjectName,req.className));
+  const candidates=teachers.filter(t=>!ids||ids.some(id=>String(id)===String(t.id)));
   eligible.set(req.classId+'|'+req.subjectId,candidates.map(t=>t.id));
   if(!candidates.length){toast('No eligible teacher assigned to '+req.className+' — '+req.subjectName+'. Check Teacher Assignments.');return}
  }
