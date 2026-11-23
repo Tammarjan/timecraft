@@ -10,9 +10,15 @@ let db, currentView=validViews.includes(requestedView)?requestedView:'dashboard'
 const $=s=>document.querySelector(s), esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const DAYS=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 function eligibleTeacher(t,subjectName,className){
- const subjects=(t.subjects||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean);
- const classes=(t.classes||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean);
- return (!subjects.length||subjects.includes(String(subjectName).trim().toLowerCase()))&&(!classes.length||classes.includes(String(className).trim().toLowerCase()));
+ // TimeCraft has no teacher-profile subject/class restrictions.
+ // The class-subject Teacher Assignments table is the sole eligibility source.
+ return !!t;
+}
+function assignedTeacherIds(map){
+ if(!map)return [];
+ const ids=Array.isArray(map.teacherIds)?map.teacherIds.filter(v=>v!=null&&v!==''):[];
+ if(ids.length)return ids;
+ return map.teacherId!=null&&map.teacherId!==''?[map.teacherId]:[];
 }
 function teacherHasClassPeriod(t,lesson,slots){
  const targetId=lesson.classId!=null?String(lesson.classId):'';
@@ -139,7 +145,7 @@ async function generateTimetable(){
    const dayPeriods=periodsByDay[slot.day]||0;
    const assigned=(slot.teacherIds||[slot.teacherId]).filter(Boolean);
    const map=maps.find(x=>x.classId===slot.classId&&x.subjectId===slot.subjectId);
-   const allowed=new Set(map?(map.teacherIds||[map.teacherId]).filter(Boolean):[]);
+   const allowed=new Set(map?assignedTeacherIds(map):[]);
    if(!days.includes(slot.day)||!Number.isInteger(Number(slot.period))||slot.period<1||slot.period>dayPeriods||
       !assigned.length||assigned.some(id=>!allowed.has(id))||
       (String(slot.subjectName).trim().toLowerCase()==='english'&&Number(slot.period)!==1)){
@@ -168,7 +174,7 @@ async function generateTimetable(){
  const eligible=new Map();
  for(const req of requirements){
   const map=maps.find(x=>x.classId===req.classId&&x.subjectId===req.subjectId);
-  const ids=map?(map.teacherIds||[map.teacherId]).filter(Boolean):null;
+  const ids=map?assignedTeacherIds(map):null;
   const candidates=teachers.filter(t=>!ids||ids.some(id=>String(id)===String(t.id)));
   eligible.set(req.classId+'|'+req.subjectId,candidates.map(t=>t.id));
   if(!candidates.length){toast('No eligible teacher assigned to '+req.className+' — '+req.subjectName+'. Check Teacher Assignments.');return}
@@ -238,7 +244,7 @@ async function generateTimetable(){
 async function editSlot(id){
  const [slots,teachers,subjects,maps]=await Promise.all(['slots','teachers','subjects','teachingAssignments'].map(all)),slot=slots.find(x=>x.id===Number(id));if(!slot)return;
  const subjectOptions=subjects.filter(x=>!x.classId||x.classId===slot.classId),initial=slotTeacherIds(slot).map(String);
- const eligibleFor=sid=>{const sub=subjects.find(x=>x.id===Number(sid)),map=maps.find(x=>x.classId===slot.classId&&x.subjectId===Number(sid)),allowed=map?(map.teacherIds||[map.teacherId]).filter(Boolean):null;return teachers.filter(t=>(!allowed||allowed.some(v=>String(v)===String(t.id)))&&eligibleTeacher(t,sub?.name||slot.subjectName,slot.className))};
+ const eligibleFor=sid=>{const sub=subjects.find(x=>x.id===Number(sid)),map=maps.find(x=>x.classId===slot.classId&&x.subjectId===Number(sid)),allowed=map?assignedTeacherIds(map):null;return teachers.filter(t=>(!allowed||allowed.some(v=>String(v)===String(t.id)))&&eligibleTeacher(t,sub?.name||slot.subjectName,slot.className))};
  let eligible=eligibleFor(slot.subjectId);
  const checks=()=>eligible.map(t=>'<label class="checkline"><input type="checkbox" name="teacherIds" value="'+t.id+'" '+(initial.includes(String(t.id))?'checked':'')+'>'+esc(t.name)+'</label>').join('');
  openModal('<h3>Edit timetable period</h3><p class="hint">'+esc(slot.day)+' · '+esc(slot.periodName||('Period '+slot.period))+' · '+esc(slot.className)+'</p><form id="slotForm"><div class="field"><label>Subject</label><select name="subjectId">'+subjectOptions.map(x=>'<option value="'+x.id+'" '+(x.id===slot.subjectId?'selected':'')+'>'+esc(x.name)+'</option>').join('')+'</select></div><div class="field"><label>Assigned teachers (select all that apply)</label><div id="slotTeacherChoices" class="check-grid">'+checks()+'</div></div><div class="form-actions"><button type="button" class="btn ghost" data-action="close-modal">Cancel</button><button class="btn">Save changes</button></div></form>');
@@ -252,7 +258,7 @@ async function editSlot(id){
 async function assignmentsPage(){
  const [classes,subjects,teachers,slots,maps,s]=await Promise.all(['classes','subjects','teachers','slots','teachingAssignments','settings'].map(x=>x==='settings'?setting():all(x)));
  const pairs=[];for(const cl of classes)for(const sub of subjects.filter(x=>!x.classId||x.classId===cl.id)){const map=maps.find(x=>x.classId===cl.id&&x.subjectId===sub.id),count=slots.filter(x=>x.classId===cl.id&&x.subjectId===sub.id).length,need=Number(sub.periods||0);pairs.push({cl,sub,map,count,need,remaining:Math.max(0,need-count)})}
- const rows=pairs.map(p=>{const ids=p.map?.teacherIds|| (p.map?.teacherId?[p.map.teacherId]:[]),picker=i=>'<select data-map-class="'+p.cl.id+'" data-map-subject="'+p.sub.id+'" data-map-index="'+i+'" class="assignment-select"><option value="">Not assigned</option>'+teachers.map(t=>'<option value="'+t.id+'" '+(ids[i]===t.id?'selected':'')+'>'+esc(t.name)+'</option>').join('')+'</select>';return '<tr><td><b>'+esc(p.cl.name)+'</b></td><td>'+esc(p.sub.name)+'</td><td>'+p.need+'</td><td><div class="assignment-pickers">'+picker(0)+picker(1)+'</div><small class="hint">One or two teachers</small></td><td><span class="tag '+(ids.length?'green':'red')+'">'+(ids.length?ids.length+' teacher(s) assigned':'Teacher vacant')+'</span></td><td><span class="tag '+(p.remaining?'red':'green')+'">'+p.remaining+' periods</span></td><td>'+p.count+' / '+p.need+'</td></tr>';}).join('');
+ const rows=pairs.map(p=>{const ids=p.map?.teacherIds|| (p.map?.teacherId?[p.map.teacherId]:[]),picker=i=>'<select data-map-class="'+p.cl.id+'" data-map-subject="'+p.sub.id+'" data-map-index="'+i+'" class="assignment-select"><option value="">Not assigned</option>'+teachers.map(t=>'<option value="'+t.id+'" '+(String(ids[i])===String(t.id)?'selected':'')+'>'+esc(t.name)+'</option>').join('')+'</select>';return '<tr><td><b>'+esc(p.cl.name)+'</b></td><td>'+esc(p.sub.name)+'</td><td>'+p.need+'</td><td><div class="assignment-pickers">'+picker(0)+picker(1)+'</div><small class="hint">One or two teachers</small></td><td><span class="tag '+(ids.length?'green':'red')+'">'+(ids.length?ids.length+' teacher(s) assigned':'Teacher vacant')+'</span></td><td><span class="tag '+(p.remaining?'red':'green')+'">'+p.remaining+' periods</span></td><td>'+p.count+' / '+p.need+'</td></tr>';}).join('');
  // Select values are set after rendering by a small inline initialization pass below.
  const dayOpts=(s.workingDays||DAYS).map(d=>'<option>'+d+'</option>').join('');
  return '<div class="welcome"><div><h2>Teacher assignments & vacancies</h2><p>Har class ke subject ko teacher assign karein aur unfilled periods dekhein.</p></div></div><div class="panel"><div class="panel-head"><div><h3>Subject teacher allocation</h3><p class="hint">Teacher select karte hi assignment save ho jayegi. Timetable generator isi assignment ko follow karega.</p></div></div>'+(pairs.length?table(['Class','Subject','Required / week','Assigned teacher','Teacher status','Period vacancies','Scheduled'],rows):empty('No subject records','Add classes and subjects first.'))+'</div><div class="panel form-card" style="margin-top:16px"><h3 class="section-title">Vacant subject periods</h3><p class="hint">Yeh woh weekly periods hain jo subject ke required count ke muqable mein abhi timetable mein place nahi hue.</p>'+(pairs.some(p=>p.remaining)?table(['Class','Subject','Required','Scheduled','Vacant'],pairs.filter(p=>p.remaining).map(p=>'<tr><td>'+esc(p.cl.name)+'</td><td>'+esc(p.sub.name)+'</td><td>'+p.need+'</td><td>'+p.count+'</td><td><b>'+p.remaining+'</b></td></tr>').join('')):empty('No vacant periods','All configured subject periods are currently scheduled.'))+'</div><div class="panel form-card" style="margin-top:16px"><h3 class="section-title">Subjects needing a teacher</h3><p class="hint">Is list mein woh subjects hain jin ke liye abhi koi teacher assign nahi hua.</p>'+(pairs.some(p=>!p.map)?table(['Class','Subject','Required periods','Status'],pairs.filter(p=>!p.map).map(p=>'<tr><td>'+esc(p.cl.name)+'</td><td>'+esc(p.sub.name)+'</td><td>'+p.need+'</td><td><span class="tag red">Teacher required</span></td></tr>').join('')):empty('No teacher vacancies','Every subject has an assigned teacher.'))+'</div><div class="panel form-card" style="margin-top:16px"><h3 class="section-title">Manually assign a specific period</h3><p class="hint">Choose class, day and period, then assign its subject and teacher. Existing lessons and clashes are protected.</p><form id="manualAssignForm"><div class="form-grid"><div class="field"><label>Class</label><select name="classId" required>'+classes.map(x=>'<option value="'+x.id+'">'+esc(x.name)+'</option>').join('')+'</select></div><div class="field"><label>Day</label><select name="day">'+dayOpts+'</select></div><div class="field"><label>Period</label><select name="period" required></select></div><div class="field"><label>Subject</label><select name="subjectId" required></select></div><div class="field"><label>Teacher</label><select name="teacherId" required></select></div></div><div class="form-actions"><button class="btn">Assign period</button></div></form></div>';
@@ -262,7 +268,7 @@ async function refreshManualAssign(form){
  const f=Object.fromEntries(new FormData(form)),cl=classes.find(x=>x.id===Number(f.classId)),sc=scheduleForDay(s,f.day),periods=[...(sc.beforeBreak||[]),...(sc.afterBreak||[])],periodSel=form.elements.period;
  const oldPeriod=periodSel.value;periodSel.innerHTML=periods.map((p,i)=>'<option value="'+(i+1)+'">'+esc(p.name)+' · '+p.start+'–'+p.end+'</option>').join('');if(periods.some((p,i)=>String(i+1)===oldPeriod))periodSel.value=oldPeriod;
  const subjectSel=form.elements.subjectId,oldSub=subjectSel.value,validSubs=subjects.filter(x=>!x.classId||x.classId===cl?.id);subjectSel.innerHTML=validSubs.map(x=>'<option value="'+x.id+'">'+esc(x.name)+'</option>').join('');if(validSubs.some(x=>String(x.id)===oldSub))subjectSel.value=oldSub;
- const sid=Number(subjectSel.value),map=maps.find(x=>x.classId===cl?.id&&x.subjectId===sid),allowed=map?(map.teacherIds||[map.teacherId]).filter(Boolean):null,mapped=allowed?teachers.filter(t=>allowed.includes(t.id)):teachers;
+ const sid=Number(subjectSel.value),map=maps.find(x=>x.classId===cl?.id&&x.subjectId===sid),allowed=map?assignedTeacherIds(map):null,mapped=allowed?teachers.filter(t=>allowed.some(id=>String(id)===String(t.id))):teachers;
  const free=mapped.filter(t=>eligibleTeacher(t,subjects.find(x=>x.id===sid)?.name,cl?.name)&&!slots.some(x=>x.day===f.day&&x.period===Number(periodSel.value)&&x.teacherId===t.id));
  form.elements.teacherId.innerHTML=free.map(t=>'<option value="'+t.id+'">'+esc(t.name)+'</option>').join('');if(!free.length)form.elements.teacherId.innerHTML='<option value="">No free eligible teacher</option>';
 }
@@ -272,7 +278,7 @@ async function saveManualAssignment(form){
  if(!cl||!sub||!teacher||!pi){toast('Please complete all assignment fields');return}
  if(slots.some(x=>x.classId===classId&&x.day===f.day&&x.period===period)){toast('This class period is already occupied');return}
  if(slots.some(x=>x.teacherId===teacherId&&x.day===f.day&&x.period===period)){toast('This teacher is already busy in this period');return}
- if(map&&!(map.teacherIds||[map.teacherId]).filter(Boolean).includes(teacherId)){toast('Choose one of the teachers assigned to this subject');return}
+ if(map&&!assignedTeacherIds(map).includes(teacherId)){toast('Choose one of the teachers assigned to this subject');return}
  if(!eligibleTeacher(teacher,sub.name,cl.name)){toast('Teacher is not eligible for this subject/class');return}
  await add('slots',{classId,className:cl.name,subjectId,subjectName:sub.name,day:f.day,period,periodName:pi.name,start:pi.start,end:pi.end,teacherId,teacherName:teacher.name});
  toast('Period assigned successfully');render();
