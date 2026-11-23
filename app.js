@@ -495,7 +495,7 @@ async function downloadFixtureReport(date,records,teachers,slots,settings){
  const blob=new Blob([pdf],{type:'application/pdf'});if('caches' in window)caches.open('timecraft-fixture-reports-v6').then(v=>v.put(new Request(location.origin+'/timecraft-fixture-report-'+date+'.pdf'),new Response(blob,{headers:{'Content-Type':'application/pdf'}}))).catch(()=>{});
  const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='Teacher-Fixture-Report-'+date+'.pdf';a.style.display='none';document.body.appendChild(a);try{a.click();toast('Fixture report download started')}catch(error){window.open(url,'_blank');toast('Opening fixture report')}setTimeout(()=>{a.remove();URL.revokeObjectURL(url)},10000);
 }
-async async function printSelectedTeacherApproved(){
+async function printSelectedTeacherApproved(){
  const id=selectedTimetableTeacherId;if(id==null){toast('Select a teacher first');return}
  const [classes,teachers,slots,s]=await Promise.all(['classes','teachers','slots','settings'].map(x=>x==='settings'?setting():all(x)));
   const person=teachers.find(t=>String(t.id)===String(id)),relevant=slots.filter(x=>slotTeacherIds(x).some(v=>String(v)===String(id)));if(!person||!relevant.length){toast('No timetable periods for this teacher');return}
