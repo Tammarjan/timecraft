@@ -119,7 +119,7 @@ async function changeTimetableSubjectTeacher(classId,subjectId,teacherId){
  if(conflict){toast(t.name+' already has a class at '+conflict.day+' P'+conflict.period);render();return}
  await put('teachingAssignments',{...m,teacherId:t.id,teacherIds:[t.id]});for(const x of affected)await put('slots',{...x,teacherId:t.id,teacherName:t.name,teacherIds:[t.id]});toast('All '+affected.length+' weekly periods updated to '+t.name);render();
 }
-async function generateTimetable(){
+async function generateTimetable(forceRearrange=false){
  const [classes,subjects,teachers,s,maps,savedSlots]=await Promise.all(['classes','subjects','teachers','settings','teachingAssignments','slots'].map(x=>x==='settings'?setting():all(x)));
  if(!classes.length||!teachers.length||!subjects.length){toast('Add classes, subjects and teachers first');return}
  const days=(s.workingDays||DAYS).filter(d=>DAYS.includes(d)),dayOrder=[...DAYS];
@@ -174,7 +174,7 @@ async function generateTimetable(){
   for(const [k,n] of expected)if((actual.get(k)||0)!==n){savedValid=false;break}
   for(const k of actual.keys())if(!expected.has(k)){savedValid=false;break}
  }
- if(savedValid){
+ if(savedValid&&!forceRearrange){
   toast('Original timetable is complete and valid · '+savedSlots.length+' periods');render();
   openModal('<h3>Timetable is already complete</h3><p class="hint">The original timetable already matches all current subject periods and teacher assignments. Its original day/period arrangement has been preserved. No changes were made.</p><div class="form-actions"><button class="btn" data-action="close-modal">Close</button></div>');
   return;
@@ -228,11 +228,19 @@ async function generateTimetable(){
     }
    }
    candidates.sort((x,y)=>x.score-y.score||x.dayIndex-y.dayIndex||x.period-y.period);
-   const chosen=candidates[0];
+   // On explicit repair, explore a different low-penalty slot rather than
+   // repeating the exact same greedy placement that caused the dead end.
+   const chosen=forceRearrange&&candidates.length>1
+    ?candidates[Math.floor(Math.random()*Math.min(8,candidates.length))]
+    :candidates[0];
    if(!chosen){
     const shortage=req.className+' — '+req.subjectName;
     toast('Cannot complete timetable for '+shortage+'. Teacher availability, assignments or school periods need checking. Existing timetable preserved.');
-    openModal('<h3>Timetable could not be completed</h3><p class="hint">'+esc(shortage)+' could not be placed. No partial timetable was saved. Check teacher assignments and available periods.</p><div class="form-actions"><button class="btn" data-action="close-modal">Close</button></div>');
+    if(!forceRearrange){
+     openModal('<h3>Teacher clash / timetable arrangement issue</h3><p class="hint">'+esc(shortage)+' could not be placed with the current period arrangement. Would you like TimeCraft to rearrange subject periods automatically? Teacher assignments will remain unchanged.</p><div class="form-actions"><button class="btn ghost" data-action="close-modal">No</button><button class="btn" data-action="auto-rearrange-timetable">Yes, rearrange periods</button></div>');
+    }else{
+     openModal('<h3>Automatic rearrangement unsuccessful</h3><p class="hint">'+esc(shortage)+' still could not be placed. No teacher assignments were changed and the original timetable remains safe. There may be a genuine scheduling constraint.</p><div class="form-actions"><button class="btn" data-action="close-modal">Close</button></div>');
+    }
     return;
    }
    const pi=[...(scheduleForDay(s,chosen.day).beforeBreak||[]),...(scheduleForDay(s,chosen.day).afterBreak||[])][chosen.period-1];
@@ -648,6 +656,7 @@ document.addEventListener('click',async e=>{const b=e.target.closest('[data-acti
  else if(a.startsWith('add-period-')){const group=a.slice(11),list=document.querySelector('[data-period-group="'+group+'"]');if(list){const count=list.querySelectorAll('.period-row').length+1,row=document.createElement('div');row.className='period-row';row.innerHTML='<input aria-label="Period name" data-period-name value="P'+count+'" placeholder="P'+count+'"><label>From<input type="time" data-period-start value="09:00"></label><label>To<input type="time" data-period-end value="10:00"></label><button type="button" class="btn danger small" data-action="remove-period">Remove</button>';list.appendChild(row)}}
  else if(a==='remove-period'){const row=b.closest('.period-row'),list=b.closest('.period-list');if(list.querySelectorAll('.period-row').length<=1){toast('At least one period is required in each section');return}row.remove()}
  else if(a==='generate')await generateTimetable();
+ else if(a==='auto-rearrange-timetable'){ $('.modal-backdrop')?.remove(); await generateTimetable(true); }
  else if(a==='new-fixture')await createFixture();
  else if(a==='auto-fixtures')await autoAssignFixtures();
  else if(a.startsWith('replace-fixture-'))await replaceFixture(a.slice(16));
