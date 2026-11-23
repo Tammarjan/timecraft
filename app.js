@@ -180,14 +180,12 @@ async function generateTimetable(){
   if(!candidates.length){toast('No eligible teacher assigned to '+req.className+' — '+req.subjectName+'. Check Teacher Assignments.');return}
  }
  requirements.sort((a,b)=>{
-  // English keeps its P1 priority. After English, schedule shared/co-teacher
-  // subjects before single-teacher subjects so their common free periods
-  // are not consumed by easier requirements first.
+  // Match Smart School's proven priority: English first, then the subjects
+  // with the FEWEST eligible assigned teachers, then higher weekly demand.
+  // This schedules the most constrained subjects before flexible/shared ones.
   const ae=String(a.subjectName).trim().toLowerCase()==='english',be=String(b.subjectName).trim().toLowerCase()==='english';
   if(ae!==be)return ae?-1:1;
   const ac=eligible.get(a.classId+'|'+a.subjectId).length,bc=eligible.get(b.classId+'|'+b.subjectId).length;
-  const am=ac>1,bm=bc>1;
-  if(am!==bm)return am?-1:1;
   return ac-bc||b.remaining-a.remaining;
  });
  const workload=new Map(teachers.map(t=>[t.id,0])),teacherSlots=new Set(),classSlots=new Set(),output=[];
