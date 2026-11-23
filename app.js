@@ -495,16 +495,15 @@ async function downloadFixtureReport(date,records,teachers,slots,settings){
  const blob=new Blob([pdf],{type:'application/pdf'});if('caches' in window)caches.open('timecraft-fixture-reports-v6').then(v=>v.put(new Request(location.origin+'/timecraft-fixture-report-'+date+'.pdf'),new Response(blob,{headers:{'Content-Type':'application/pdf'}}))).catch(()=>{});
  const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='Teacher-Fixture-Report-'+date+'.pdf';a.style.display='none';document.body.appendChild(a);try{a.click();toast('Fixture report download started')}catch(error){window.open(url,'_blank');toast('Opening fixture report')}setTimeout(()=>{a.remove();URL.revokeObjectURL(url)},10000);
 }
-async function printSelectedTeacherApproved(){
+async async function printSelectedTeacherApproved(){
  const id=selectedTimetableTeacherId;if(id==null){toast('Select a teacher first');return}
- Promise.all(['classes','teachers','slots','settings'].map(x=>x==='settings'?setting():all(x))).then(([classes,teachers,slots,s])=>{
+ const [classes,teachers,slots,s]=await Promise.all(['classes','teachers','slots','settings'].map(x=>x==='settings'?setting():all(x)));
   const person=teachers.find(t=>String(t.id)===String(id)),relevant=slots.filter(x=>slotTeacherIds(x).some(v=>String(v)===String(id)));if(!person||!relevant.length){toast('No timetable periods for this teacher');return}
   const days=(s.workingDays||DAYS).filter(d=>DAYS.includes(d)),wd=scheduleForDay(s,'Monday'),pre=wd.beforeBreak||[],post=wd.afterBreak||[],heads=[...pre,...post].map((p,i)=>'<th><b>Period '+(i+1)+'</b><small>'+esc(p.start)+' – '+esc(p.end)+'</small></th>');heads.splice(pre.length,0,'<th>Break<small>'+esc(wd.breakStart)+' – '+esc(wd.breakEnd)+'</small></th>');
   const fmt=t=>{const a=t.split(':').map(Number),h=a[0],m=a[1];return String(h%12||12).padStart(2,'0')+':'+String(m).padStart(2,'0')+' '+(h>=12?'PM':'AM')};
   const rows=days.map(day=>{const sc=scheduleForDay(s,day),p1=sc.beforeBreak||[],p2=sc.afterBreak||[],ps=[...p1,...p2];const cell=i=>{const x=relevant.find(z=>z.day===day&&Number(z.period)===i+1);return x?'<td><b>'+esc(x.subjectName)+'</b><small>'+esc(x.className||classes.find(k=>String(k.id)===String(x.classId))?.name||'')+'</small></td>':'<td class="empty">—</td>'};const br='<td class="break"><b>Break</b><small>'+esc(sc.breakStart)+' – '+esc(sc.breakEnd)+'</small></td>';let cells=p1.map((p,i)=>cell(i)).join('')+br+p2.map((p,i)=>cell(p1.length+i)).join('');if(day==='Friday'&&p2.length<3)cells+='<td colspan="'+(4-p2.length)+'" class="off">OFF</td>';return '<tr><th>'+esc(day)+'</th><td>'+esc(fmt(ps[0]?.start||'09:00'))+' – '+esc(fmt(sc.offTime||'14:00'))+'</td>'+cells+'</tr>'}).join('');
   const w=window.open('','_blank');if(!w){toast('Allow pop-ups to print the PDF');return}
   w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Teacher timetable</title><style>*{box-sizing:border-box}body{margin:0;font-family:Arial;color:#111}.page{width:297mm;min-height:210mm;padding:5mm}.head{height:28mm;border:1.4px solid #111;border-radius:3mm;display:grid;grid-template-columns:22mm 1fr 42mm;align-items:center;padding:2mm 4mm;margin-bottom:2mm;gap:3mm}.logo{width:18mm;height:18mm}.school{text-align:center}.school h1{font:bold 23pt Georgia;margin:0 0 2mm;border-bottom:1px solid #777;padding-bottom:1mm}.title{display:inline-block;background:#e1e1e1;border-radius:9mm;padding:1mm 9mm;font:bold 17pt Georgia}.effective{text-align:center;border:1px solid #222;border-radius:2mm;padding:2mm;font:bold 9pt Georgia}.effective b{display:block;margin-top:1mm}table{border-collapse:collapse;width:100%;table-layout:fixed}th,td{border:1px solid #111;text-align:center;vertical-align:middle;padding:1mm .6mm}thead th{height:13mm;background:#ededed;font:bold 11pt Georgia}thead small,td small{display:block;font:8pt Arial;margin-top:1mm}tbody th{font:bold 12pt Georgia;background:#f1f1f1}tbody td{height:19mm;font:bold 10pt Georgia}td b{display:block;font:bold 10.5pt Georgia}td small{font:9pt Arial;line-height:1.12}.break,.off{background:#e5e5e5}.empty{color:#aaa}@page{size:A4 landscape;margin:0}@media print{.page{page-break-after:always}}</style></head><body><section class="page"><header class="head"><div class="logo">'+schoolEducationLogo()+'</div><div class="school"><h1>'+esc(s.schoolName||'Government Higher Secondary School')+'</h1><div class="title">Teacher '+esc(person.name)+' – Time Table</div></div><div class="effective">Effective From:<b>21 October 2026</b></div></header><table><thead><tr><th>DAY</th><th>TIME</th>'+heads.join('')+'</tr></thead><tbody>'+rows+'</tbody></table></section></body></html>');w.document.close();w.focus();setTimeout(()=>w.print(),700);
- });
 }
 function printTimetables(kind){
  const [classes,teachers,slots,s]=await Promise.all(['classes','teachers','slots','settings'].map(x=>x==='settings'?setting():all(x)));
@@ -645,7 +644,7 @@ document.addEventListener('click',async e=>{const b=e.target.closest('[data-acti
  else if(a==='reset')await resetAll();
  else if(a==='print-class')await printTimetables('class');
  else if(a==='print-teacher')await printTimetables('teacher');
- else if(a==='print-selected-teacher')printSelectedTeacherApproved();
+ else if(a==='print-selected-teacher')await printSelectedTeacherApproved();
  else if(a==='print')window.print();
  }catch(err){console.error(err);toast(err.message||'Action failed')}
 });
