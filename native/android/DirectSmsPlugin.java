@@ -1,6 +1,12 @@
 package pk.timecraft.app;
 
 import android.Manifest;
+import android.content.ContentValues;
+import android.os.Build;
+import android.os.Environment;
+import android.provider.MediaStore;
+import java.io.OutputStream;
+import java.util.Base64;
 import android.telephony.SmsManager;
 import com.getcapacitor.*;
 import com.getcapacitor.annotation.CapacitorPlugin;
@@ -12,6 +18,45 @@ import java.util.ArrayList;
     @Permission(alias = "sms", strings = { Manifest.permission.SEND_SMS })
 })
 public class DirectSmsPlugin extends Plugin {
+
+    @PluginMethod
+    public void savePdf(PluginCall call) {
+        String name = call.getString("fileName", "TimeCraft-Report.pdf");
+        String encoded = call.getString("base64", "");
+        if (encoded.isEmpty()) {
+            call.reject("PDF data is empty");
+            return;
+        }
+        try {
+            byte[] data = android.util.Base64.decode(encoded, android.util.Base64.DEFAULT);
+            ContentValues values = new ContentValues();
+            values.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
+            values.put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf");
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/TimeCraft");
+                values.put(MediaStore.MediaColumns.IS_PENDING, 1);
+            }
+            android.net.Uri uri = getContext().getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+            if (uri == null) throw new IllegalStateException("Could not create the PDF in Downloads");
+            try (OutputStream output = getContext().getContentResolver().openOutputStream(uri)) {
+                if (output == null) throw new IllegalStateException("Could not open the PDF output");
+                output.write(data);
+                output.flush();
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                ContentValues done = new ContentValues();
+                done.put(MediaStore.MediaColumns.IS_PENDING, 0);
+                getContext().getContentResolver().update(uri, done, null, null);
+            }
+            JSObject result = new JSObject();
+            result.put("saved", true);
+            result.put("uri", uri.toString());
+            call.resolve(result);
+        } catch (Exception error) {
+            call.reject("Could not save PDF: " + error.getMessage(), error);
+        }
+    }
+
     @PluginMethod
     public void send(PluginCall call) {
         String phone = call.getString("phone", "").trim();
