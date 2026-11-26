@@ -1,0 +1,9 @@
+{
+  "appId": "pk.timecraft.app",
+  "appName": "TimeCraft",
+  "webDir": "www",
+  "bundledWebRuntime": false,
+  "android": {
+    "backgroundColor": "#101b35"
+  }
+}
