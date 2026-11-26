@@ -1,5 +1,5 @@
 /* TimeCraft offline-first service worker. App data remains in IndexedDB. */
-const CACHE = 'timecraft-shell-v64';
+const CACHE = 'timecraft-shell-v65';
 const ASSETS = ['./','./index.html','./offline.html','./styles.css','./app.js','./manifest.webmanifest','./icon.svg','./icon-192.png','./icon-512.png'];
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
