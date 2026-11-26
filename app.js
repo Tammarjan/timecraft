@@ -566,7 +566,15 @@ async function downloadFixtureReport(date,records,teachers,slots,settings){
  const ps=add('<< /Type /Pages /Kids ['+p+' 0 R] /Count 1 >>');o[p-1]=o[p-1].replace('PAGES',String(ps));
  const cat=add('<< /Type /Catalog /Pages '+ps+' 0 R >>');let pdf='%PDF-1.4\n',offs=[0];o.forEach((v,i)=>{offs.push(pdf.length);pdf+=(i+1)+' 0 obj\n'+v+'\nendobj\n'});
  const xr=pdf.length;pdf+='xref\n0 '+(o.length+1)+'\n0000000000 65535 f \n'+offs.slice(1).map(v=>String(v).padStart(10,'0')+' 00000 n \n').join('')+'trailer\n<< /Size '+(o.length+1)+' /Root '+cat+' 0 R >>\nstartxref\n'+xr+'\n%%EOF';
- const blob=new Blob([pdf],{type:'application/pdf'});if('caches' in window)caches.open('timecraft-fixture-reports-v6').then(v=>v.put(new Request(location.origin+'/timecraft-fixture-report-'+date+'.pdf'),new Response(blob,{headers:{'Content-Type':'application/pdf'}}))).catch(()=>{});
+ const blob=new Blob([pdf],{type:'application/pdf'});
+ const nativePdf=window.TimeCraftDirectSms;
+ if(nativePdf&&typeof nativePdf.savePdf==='function'){
+  const bytes=new Uint8Array(await blob.arrayBuffer());let binary='';for(let i=0;i<bytes.length;i+=0x8000)binary+=String.fromCharCode(...bytes.subarray(i,i+0x8000));
+  const saved=await nativePdf.savePdf({fileName:'Teacher-Fixture-Report-'+date+'.pdf',base64:btoa(binary)});
+  if(saved?.saved){toast('Fixture report saved in Downloads/TimeCraft');return}
+  throw new Error('Android could not save the fixture PDF');
+ }
+ if('caches' in window)caches.open('timecraft-fixture-reports-v6').then(v=>v.put(new Request(location.origin+'/timecraft-fixture-report-'+date+'.pdf'),new Response(blob,{headers:{'Content-Type':'application/pdf'}}))).catch(()=>{});
  const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='Teacher-Fixture-Report-'+date+'.pdf';a.style.display='none';document.body.appendChild(a);try{a.click();toast('Fixture report download started')}catch(error){window.open(url,'_blank');toast('Opening fixture report')}setTimeout(()=>{a.remove();URL.revokeObjectURL(url)},10000);
 }
 async function printSelectedTeacherApproved(){
