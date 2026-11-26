@@ -448,7 +448,8 @@ async function autoAssignFixtures(){
   const lessons=slots.filter(x=>slotTeacherIds(x).some(id=>sameId(id,absentTeacher.id))&&x.day===day).sort((a,b)=>a.period-b.period);
   for(const lesson of lessons){
    const choices=teachers.filter(t=>!sameId(t.id,absentTeacher.id)&&!dayAbsentSet.has(String(t.id))&&!occupied.has(String(t.id)+'|'+lesson.period));
-   choices.sort((a,b)=>fixtureEligibilityTier(a,lesson,slots)-fixtureEligibilityTier(b,lesson,slots)||((dailyCounts.get(String(a.id))||0)>=1?1:0)-((dailyCounts.get(String(b.id))||0)>=1?1:0)||((Number(load.get(String(a.id))||0)>=Number(a.maxPeriods??30))?1:0)-((Number(load.get(String(b.id))||0)>=Number(b.maxPeriods??30))?1:0)||(load.get(String(a.id))||0)-(load.get(String(b.id))||0)||a.name.localeCompare(b.name));
+   const priority=t=>{const sameClass=fixtureEligibilityTier(t,lesson,slots)===0,alreadyAssigned=(dailyCounts.get(String(t.id))||0)>0;if(!alreadyAssigned&&sameClass)return 0;if(!alreadyAssigned&&!sameClass)return 1;if(alreadyAssigned&&sameClass)return 2;return 3};
+   choices.sort((a,b)=>priority(a)-priority(b)||((Number(load.get(String(a.id))||0)>=Number(a.maxPeriods??30))?1:0)-((Number(load.get(String(b.id))||0)>=Number(b.maxPeriods??30))?1:0)||(load.get(String(a.id))||0)-(load.get(String(b.id))||0)||a.name.localeCompare(b.name));
    const sub=choices[0]||null;
    if(sub){const key=String(sub.id);dailyCounts.set(key,(dailyCounts.get(key)||0)+1);occupied.add(key+'|'+lesson.period);load.set(key,(load.get(key)||0)+1)}
    const tier=sub?fixtureEligibilityTier(sub,lesson,slots):null,count=sub?(dailyCounts.get(String(sub.id))||0):0;
