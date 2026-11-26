@@ -1,0 +1,73 @@
+name: Build TimeCraft Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "app.js"
+      - "index.html"
+      - "styles.css"
+      - "manifest.webmanifest"
+      - "sw.js"
+      - "icon*"
+      - "native/**"
+      - "native-entry.js"
+      - "package.json"
+      - "capacitor.config.json"
+      - ".github/workflows/build-android.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: timecraft-android-apk
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Install Android SDK packages
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Prepare native web assets
+        run: |
+          mkdir -p www
+          cp index.html styles.css app.js manifest.webmanifest sw.js offline.html icon.svg icon-192.png icon-512.png www/
+          sed -i 's#<script src="app.js"></script>#<script type="module" src="native-entry.js"></script>#' www/index.html
+          npm run build:native-entry
+      - name: Generate Android project
+        run: npx cap add android
+      - name: Install native SMS bridge
+        run: |
+          mkdir -p android/app/src/main/java/pk/timecraft/app
+          cp native/android/DirectSmsPlugin.java android/app/src/main/java/pk/timecraft/app/
+          printf '%s\n' 'package pk.timecraft.app;' 'import com.getcapacitor.BridgeActivity;' 'public class MainActivity extends BridgeActivity {' '  @Override public void onCreate(android.os.Bundle savedInstanceState) {' '    registerPlugin(DirectSmsPlugin.class);' '    super.onCreate(savedInstanceState);' '  }' '}' > android/app/src/main/java/pk/timecraft/app/MainActivity.java
+          sed -i 's#<application#<uses-permission android:name="android.permission.SEND_SMS" />\n    <application#' android/app/src/main/AndroidManifest.xml
+      - name: Sync Capacitor Android
+        run: npx cap sync android
+      - name: Build debug APK
+        working-directory: android
+        run: ./gradlew --no-daemon assembleDebug
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: timecraft-android-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30
