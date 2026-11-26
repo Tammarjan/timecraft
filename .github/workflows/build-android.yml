@@ -74,8 +74,8 @@ jobs:
         run: |
           mkdir -p android/app/src/main/java/pk/timecraft/app
           cp native/android/DirectSmsPlugin.java android/app/src/main/java/pk/timecraft/app/
-          printf '%s\\n' 'package pk.timecraft.app;' 'import com.getcapacitor.BridgeActivity;' 'public class MainActivity extends BridgeActivity {' '  @Override public void onCreate(android.os.Bundle savedInstanceState) {' '    registerPlugin(DirectSmsPlugin.class);' '    super.onCreate(savedInstanceState);' '  }' '}' > android/app/src/main/java/pk/timecraft/app/MainActivity.java
-          sed -i 's#<application#<uses-permission android:name="android.permission.SEND_SMS" />\\n    <application#' android/app/src/main/AndroidManifest.xml
+          printf '%s\n' 'package pk.timecraft.app;' 'import com.getcapacitor.BridgeActivity;' 'public class MainActivity extends BridgeActivity {' '  @Override public void onCreate(android.os.Bundle savedInstanceState) {' '    registerPlugin(DirectSmsPlugin.class);' '    super.onCreate(savedInstanceState);' '  }' '}' > android/app/src/main/java/pk/timecraft/app/MainActivity.java
+          sed -i 's#<application#<uses-permission android:name="android.permission.SEND_SMS" />\n    <application#' android/app/src/main/AndroidManifest.xml
       - name: Sync Capacitor Android
         run: npx cap sync android
       - name: Build debug APK
