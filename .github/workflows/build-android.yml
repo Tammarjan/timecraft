@@ -53,6 +53,16 @@ jobs:
           npm run build:native-entry
       - name: Generate Android project
         run: npx cap add android
+      - name: Restore TimeCraft launcher icon
+        run: |
+          for spec in "mdpi:48" "hdpi:72" "xhdpi:96" "xxhdpi:144" "xxxhdpi:192"; do
+            density=${spec%%:*}
+            size=${spec##*:}
+            mkdir -p "android/app/src/main/res/mipmap-$density"
+            convert icon-512.png -resize "${size}x${size}" "android/app/src/main/res/mipmap-$density/ic_launcher.png"
+            cp "android/app/src/main/res/mipmap-$density/ic_launcher.png" "android/app/src/main/res/mipmap-$density/ic_launcher_round.png"
+          done
+          rm -f android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml android/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
       - name: Install native SMS bridge
         run: |
           mkdir -p android/app/src/main/java/pk/timecraft/app
