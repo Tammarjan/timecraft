@@ -65,7 +65,7 @@
       const androidChrome = /Android/i.test(navigator.userAgent) && /Chrome\//i.test(navigator.userAgent) && !/EdgA|OPR|SamsungBrowser/i.test(navigator.userAgent);
       const poster = document.getElementById('apkPoster');
       const close = document.getElementById('apkPosterClose');
-      if (androidChrome && !standalone && !sessionStorage.getItem('timecraft-apk-poster-dismissed')) {
+      if (!window.TimeCraftNativeApp && androidChrome && !standalone && !sessionStorage.getItem('timecraft-apk-poster-dismissed')) {
         poster.hidden = false;
       }
       close.addEventListener('click', () => {
