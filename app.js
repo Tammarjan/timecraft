@@ -682,22 +682,22 @@ async function printTimetables(kind){
  const w=window.open('','_blank');if(!w){toast('Allow pop-ups to print the PDF');return}
  w.document.open();w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>TimeCraft ${kind} timetable</title><style>
 *{box-sizing:border-box}html,body{margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;color:#111;background:#fff}
-.print-page{width:100%;min-height:210mm;padding:5mm 5mm;page-break-after:always;break-after:page}.print-page:last-child{page-break-after:auto;break-after:auto}
+.print-page{width:297mm;height:210mm;min-height:210mm;padding:5mm;overflow:hidden;page-break-after:always;break-after:page}.print-page:last-child{page-break-after:auto;break-after:auto}
 .approved-print-header{height:28mm;border:1.4px solid #111;border-radius:3mm;display:grid;grid-template-columns:22mm 1fr 42mm;align-items:center;padding:2mm 4mm;margin-bottom:2mm;gap:3mm}
 .approved-print-emblem{width:18mm;height:18mm;border:0;border-radius:0;display:flex;align-items:center;justify-content:center}.approved-print-emblem .school-education-logo{width:100%;height:100%}
-.approved-print-school{text-align:center}.approved-print-school h1{font: bold 23pt Georgia,serif;margin:0 0 2mm;border-bottom:1px solid #777;padding-bottom:1mm}
-.approved-print-title{display:inline-block;background:#e1e1e1;border-radius:9mm;padding:1mm 9mm;font:bold 17pt Georgia,serif}
+.approved-print-school{text-align:center;min-width:0;overflow:hidden}.approved-print-school h1{font:bold 16pt Georgia,serif;white-space:nowrap;overflow:hidden;text-overflow:clip;margin:0 0 1.5mm;border-bottom:1px solid #777;padding-bottom:1mm}
+.approved-print-title{display:inline-block;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:clip;background:#e1e1e1;border-radius:9mm;padding:1mm 7mm;font:bold 12pt Georgia,serif}
 .approved-print-effective{text-align:center;border:1px solid #222;border-radius:2mm;padding:2mm;font: bold 9pt Georgia,serif}.approved-print-effective b{display:block;margin-top:1mm}
-.approved-print-table{border-collapse:collapse;width:100%;table-layout:fixed}.approved-print-table th,.approved-print-table td{border:1px solid #111;text-align:center;vertical-align:middle;padding:1mm .6mm}
+.approved-print-table{border-collapse:collapse;width:100%;height:auto;table-layout:fixed;break-inside:avoid}.approved-print-table th,.approved-print-table td{border:1px solid #111;text-align:center;vertical-align:middle;padding:1mm .6mm}
 .approved-print-table thead th{height:13mm;background:#ededed;font:bold 11pt Georgia,serif}.approved-print-table thead small{display:block;font: bold 8pt Arial;margin-top:1mm}
 .approved-print-table tbody th.day-cell{font:bold 13pt Georgia,serif;background:#f1f1f1;width:10%}
 .approved-print-table .time-cell{font:bold 7.5pt Arial;width:8%}
-.approved-print-table tbody td{height:19mm;font: bold 10pt Georgia,serif}
-.approved-print-table td b{display:block;font:bold 10.5pt Georgia,serif}.approved-print-table td small{display:block;font:9pt Arial,sans-serif;margin-top:1mm;line-height:1.12}
+.approved-print-table tbody td{height:17mm;font:bold 8.5pt Georgia,serif;overflow-wrap:anywhere}
+.approved-print-table td b{display:block;font:bold 9pt Georgia,serif;line-height:1.05;overflow-wrap:anywhere}.approved-print-table td small{display:block;font:7pt Arial,sans-serif;margin-top:1mm;line-height:1.08;overflow-wrap:anywhere}
 .approved-print-table .break-cell{background:#e5e5e5}.approved-print-table .break-cell span{display:block;font:bold 9pt Georgia,serif}.approved-print-table .break-cell small{font:7pt Arial}
 .approved-print-table .off-cell{background:#e5e5e5;font:bold 16pt Georgia,serif}.approved-print-table .empty-cell{color:#aaa}
 .print-table{border-collapse:collapse;width:100%;table-layout:fixed;margin-bottom:2mm}.print-table th,.print-table td{border:1px solid #222;text-align:center;vertical-align:middle;padding:2px}.print-table thead th{height:10mm;font-size:8pt}.print-table th small{display:block;font-size:6.5pt;font-weight:400;margin-top:2px}.print-table tbody td{height:13mm;font-size:8pt}.print-table td b{display:block;font-size:8pt}.print-table td small{display:block;font-size:6.5pt;margin-top:2px}.break-cell{width:7%;background:#f5f5f5}.break-cell span{font-size:6.5pt;writing-mode:vertical-rl;transform:rotate(180deg);display:inline-block}.class-break-cell span{width:100%;height:100%;min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;writing-mode:horizontal-tb;transform:none;gap:1mm}.class-break-cell span b,.class-break-cell span small{display:block;white-space:nowrap}.class-break-cell span small{font-size:6pt;line-height:1.1}
-@page{size:A4 landscape;margin:0}@media print{.print-page{break-after:page}.print-page:last-child{break-after:auto}}
+@page{size:A4 landscape;margin:0}@media print{html,body{width:297mm;margin:0!important;background:#fff!important;color:#111!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}.print-page{break-after:page}.print-page:last-child{break-after:auto}}
 </style></head><body>${pages.join('')}</body></html>`);
  w.document.close();w.focus();setTimeout(()=>w.print(),700);
 }
